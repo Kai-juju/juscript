@@ -1,0 +1,1087 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="JuScript">
+<title>JuScript — Teleprompter</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Lora:wght@500;600&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --console:   #14161a;
+    --panel:     #1c1f26;
+    --panel-hi:  #262a33;
+    --line:      #33384a;
+    --steel:     #8a94a6;
+    --steel-dim: #5a6270;
+    --amber:     #ffb038;
+    --green:     #4ade80;
+    --paper:     #f4f2ec;
+    --tally:     #ff3b30;
+    --text:      #d7dce5;
+    --readline:  #ffb038;
+    --ui:  "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+    --disp: "Space Grotesk", -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; overscroll-behavior: none; }
+
+  body {
+    background: var(--console);
+    color: var(--text);
+    font-family: var(--ui);
+    display: flex;
+    flex-direction: column;
+    height: 100dvh;
+    overflow: hidden;
+    -webkit-font-smoothing: antialiased;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  button, input, .seg-ctl { touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
+  button { user-select: none; -webkit-user-select: none; }
+
+  /* ---------- top bar ---------- */
+  .topbar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 16px;
+    padding-top: max(10px, env(safe-area-inset-top));
+    background: var(--panel);
+    border-bottom: 1px solid var(--line);
+    flex-shrink: 0;
+    flex-wrap: wrap;
+  }
+
+  .brand { display: flex; align-items: baseline; gap: 9px; font-family: var(--disp); }
+  .brand .name { font-weight: 700; font-size: 17px; letter-spacing: 1.5px; color: var(--paper); }
+  .brand .kind {
+    font-family: var(--ui); font-size: 9px; letter-spacing: 2.5px;
+    text-transform: uppercase; color: var(--steel-dim);
+  }
+
+  .tally {
+    display: flex; align-items: center; gap: 7px;
+    padding: 6px 11px 6px 9px;
+    border: 1px solid var(--line); border-radius: 3px;
+    font-size: 9px; letter-spacing: 2px; color: var(--steel-dim); text-transform: uppercase;
+  }
+  .tally .dot {
+    width: 9px; height: 9px; border-radius: 50%;
+    background: var(--steel-dim); transition: background .15s, box-shadow .15s;
+  }
+  body.live .tally { color: var(--tally); border-color: #5a2420; }
+  body.live .tally .dot {
+    background: var(--tally);
+    box-shadow: 0 0 10px var(--tally);
+    animation: pulse 1.4s ease-in-out infinite;
+  }
+  @keyframes pulse { 50% { opacity: .5; } }
+  @media (prefers-reduced-motion: reduce) { body.live .tally .dot { animation: none; } }
+
+  .spacer { flex: 1; }
+
+  .seg-ctl { display: flex; border: 1px solid var(--line); border-radius: 3px; overflow: hidden; }
+  .seg-ctl button {
+    background: var(--panel-hi);
+    color: var(--steel-dim);
+    border: none;
+    padding: 0 14px;
+    min-height: 44px;
+    font-family: var(--ui); font-size: 10px; letter-spacing: 1.5px;
+    text-transform: uppercase; cursor: pointer;
+    transition: background .12s, color .12s;
+    display: flex; align-items: center; gap: 7px;
+  }
+  .seg-ctl button + button { border-left: 1px solid var(--line); }
+  .seg-ctl button.on { background: var(--paper); color: #14161a; font-weight: 600; }
+  .seg-ctl button:focus-visible { outline: 2px solid var(--amber); outline-offset: -2px; }
+  .seg-ctl .arrow { font-size: 12px; line-height: 1; }
+
+  .iconbtn {
+    background: var(--panel-hi);
+    color: var(--steel);
+    border: 1px solid var(--line);
+    border-radius: 3px;
+    padding: 0 13px;
+    min-height: 44px;
+    font-family: var(--ui); font-size: 10px; letter-spacing: 1.5px;
+    text-transform: uppercase; cursor: pointer;
+    transition: background .12s, color .12s, border-color .12s;
+  }
+  .iconbtn:hover { color: var(--paper); border-color: var(--steel-dim); }
+  .iconbtn.on { background: var(--amber); color: #1a1400; border-color: var(--amber); font-weight: 600; }
+  .iconbtn:focus-visible { outline: 2px solid var(--amber); outline-offset: 2px; }
+
+  /* ---------- prompt stage ---------- */
+  .stage {
+    position: relative;
+    flex: 1;
+    overflow: hidden;
+    background: #000;
+    min-height: 0;
+  }
+  .stage.flip-h { transform: scaleX(-1); }
+  .stage.flip-v { transform: scaleY(-1); }
+  .stage.flip-h.flip-v { transform: scale(-1, -1); }
+
+  .readline { position: absolute; pointer-events: none; z-index: 3; }
+  .readline::before, .readline::after { content: ""; position: absolute; width: 0; height: 0; }
+
+  .stage[data-axis="x"] .readline {
+    left: 50%; top: 0; bottom: 0; width: 0;
+    border-left: 2px solid var(--readline);
+    opacity: .5;
+    transform: translateX(-50%);
+  }
+  .stage[data-axis="x"] .readline::before {
+    top: 12px; left: 50%; transform: translateX(-50%);
+    border-left: 7px solid transparent; border-right: 7px solid transparent;
+    border-top: 9px solid var(--readline);
+  }
+  .stage[data-axis="x"] .readline::after {
+    bottom: 12px; left: 50%; transform: translateX(-50%);
+    border-left: 7px solid transparent; border-right: 7px solid transparent;
+    border-bottom: 9px solid var(--readline);
+  }
+
+  .stage[data-axis="y"] .readline {
+    top: 42%; left: 0; right: 0; height: 0;
+    border-top: 2px solid var(--readline);
+    opacity: .5;
+  }
+  .stage[data-axis="y"] .readline::before {
+    left: 12px; top: 50%; transform: translateY(-50%);
+    border-top: 7px solid transparent; border-bottom: 7px solid transparent;
+    border-left: 9px solid var(--readline);
+  }
+  .stage[data-axis="y"] .readline::after {
+    right: 12px; top: 50%; transform: translateY(-50%);
+    border-top: 7px solid transparent; border-bottom: 7px solid transparent;
+    border-right: 9px solid var(--readline);
+  }
+
+  .vignette { position: absolute; inset: 0; pointer-events: none; z-index: 2; }
+  .stage[data-axis="x"] .vignette {
+    background: linear-gradient(90deg,
+      rgba(0,0,0,.92) 0%, rgba(0,0,0,0) 20%,
+      rgba(0,0,0,0) 80%, rgba(0,0,0,.92) 100%);
+  }
+  .stage[data-axis="y"] .vignette {
+    background: linear-gradient(180deg,
+      rgba(0,0,0,.92) 0%, rgba(0,0,0,0) 18%,
+      rgba(0,0,0,0) 82%, rgba(0,0,0,.92) 100%);
+  }
+
+  .track {
+    position: absolute;
+    z-index: 1;
+    font-family: var(--disp);
+    font-weight: 500;
+    color: var(--amber);
+    will-change: transform;
+  }
+  .track.font-serif { font-family: "Lora", Georgia, "Times New Roman", serif; font-weight: 600; }
+
+  .stage[data-axis="x"] .track {
+    left: 0; top: 50%;
+    white-space: pre;
+    line-height: 1;
+  }
+  .stage[data-axis="y"] .track {
+    top: 0; left: 50%;
+    white-space: pre-wrap;
+    word-break: break-word;
+    width: 84%;
+    max-width: 1100px;
+    line-height: 1.32;
+    text-align: left;
+  }
+
+  .gap { display: inline-block; width: 1.6em; }
+
+  .w { border-radius: 4px; }
+  body:not(.live) .w { cursor: pointer; }
+  .w.hit { animation: hit .6s ease; }
+  @keyframes hit { 0% { background: rgba(255,255,255,.3); } 100% { background: transparent; } }
+
+  .placeholder {
+    position: absolute; inset: 0;
+    display: flex; align-items: center; justify-content: center;
+    color: var(--steel-dim);
+    font-size: 12px; letter-spacing: 2px; text-transform: uppercase;
+    z-index: 1; text-align: center; padding: 0 40px;
+    pointer-events: none;
+  }
+
+  /* ---------- transport ---------- */
+  .controls {
+    display: flex; align-items: center; gap: 18px;
+    padding: 12px 16px;
+    background: var(--panel);
+    border-top: 1px solid var(--line);
+    flex-shrink: 0; flex-wrap: wrap;
+  }
+
+  .play {
+    display: flex; align-items: center; gap: 11px;
+    background: var(--green); color: #062611;
+    border: none; border-radius: 4px;
+    padding: 0 24px; min-height: 52px; min-width: 142px;
+    font-family: var(--disp); font-weight: 700; font-size: 14px; letter-spacing: 2px;
+    cursor: pointer; justify-content: center;
+    transition: filter .12s, background .12s;
+  }
+  .play:hover { filter: brightness(1.08); }
+  .play:focus-visible { outline: 2px solid var(--paper); outline-offset: 2px; }
+  body.live .play { background: var(--amber); color: #1a1400; }
+
+  .group { display: flex; align-items: center; gap: 8px; }
+  .group > label {
+    font-size: 9px; letter-spacing: 2px; text-transform: uppercase;
+    color: var(--steel-dim); white-space: nowrap;
+  }
+  .readout {
+    font-size: 12px; color: var(--steel);
+    min-width: 38px; text-align: right;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .step {
+    background: var(--panel-hi);
+    color: var(--steel);
+    border: 1px solid var(--line);
+    border-radius: 3px;
+    min-width: 44px; min-height: 44px;
+    font-family: var(--ui); font-size: 18px; line-height: 1;
+    cursor: pointer;
+    transition: background .12s, color .12s;
+  }
+  .step:hover { color: var(--paper); border-color: var(--steel-dim); }
+  .step:active { background: var(--line); }
+  .step:focus-visible { outline: 2px solid var(--amber); outline-offset: 2px; }
+
+  input[type=range] {
+    -webkit-appearance: none; appearance: none;
+    background: transparent;
+    width: 168px; height: 44px; cursor: pointer;
+  }
+  input[type=range]::-webkit-slider-runnable-track {
+    height: 6px; background: var(--line); border-radius: 3px;
+  }
+  input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none; appearance: none;
+    margin-top: -10px;
+    width: 26px; height: 26px; border-radius: 50%;
+    background: var(--steel); border: 2px solid var(--panel);
+    transition: background .12s;
+  }
+  input[type=range]::-webkit-slider-thumb:hover { background: var(--paper); }
+  input[type=range]::-moz-range-track { height: 6px; background: var(--line); border-radius: 3px; }
+  input[type=range]::-moz-range-thumb {
+    width: 26px; height: 26px; border-radius: 50%;
+    background: var(--steel); border: 2px solid var(--panel); cursor: pointer;
+  }
+  input[type=range]:focus-visible { outline: 2px solid var(--amber); outline-offset: 4px; }
+
+  .swatches { display: flex; gap: 6px; }
+  .swatch {
+    width: 44px; height: 44px; border-radius: 50%;
+    border: none; background: none; cursor: pointer; padding: 0;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .swatch i {
+    display: block; width: 24px; height: 24px; border-radius: 50%;
+    background: currentColor;
+    transition: transform .1s, box-shadow .1s;
+  }
+  .swatch:hover i { transform: scale(1.12); }
+  .swatch.on i { box-shadow: 0 0 0 2px var(--panel), 0 0 0 4px var(--paper); }
+  .swatch:focus-visible { outline: 2px solid var(--amber); outline-offset: -4px; border-radius: 4px; }
+
+  /* ---------- script drawer ---------- */
+  .editor { background: var(--console); border-top: 1px solid var(--line); flex-shrink: 0; }
+  .editor-head {
+    display: flex; align-items: center; gap: 12px;
+    padding: 0 16px; min-height: 44px;
+    cursor: pointer; user-select: none; -webkit-user-select: none;
+  }
+  .editor-head .lbl { font-size: 9px; letter-spacing: 2px; text-transform: uppercase; color: var(--steel-dim); }
+  .editor-head .chev { color: var(--steel-dim); transition: transform .2s; font-size: 11px; }
+  body.editor-open .editor-head .chev { transform: rotate(180deg); }
+  .editor-head .count {
+    margin-left: auto; font-size: 10px; color: var(--steel-dim); letter-spacing: 1px;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .editor-body { display: none; }
+  body.editor-open .editor-body { display: block; }
+
+  .tabrow {
+    display: flex; align-items: center; gap: 8px;
+    padding: 6px 16px 8px;
+  }
+  .tabbar {
+    display: flex; align-items: center; gap: 6px;
+    overflow-x: auto; flex: 1;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+  .tabbar::-webkit-scrollbar { display: none; }
+
+  .tab {
+    display: flex; align-items: center; gap: 9px;
+    background: var(--panel-hi);
+    color: var(--steel);
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    padding: 0 13px;
+    min-height: 40px;
+    max-width: 210px;
+    font-family: var(--ui); font-size: 12px;
+    cursor: pointer; white-space: nowrap; flex-shrink: 0;
+    transition: background .12s, color .12s;
+  }
+  .tab .tname { overflow: hidden; text-overflow: ellipsis; }
+  .tab .tx {
+    font-size: 15px; line-height: 1; opacity: .55; padding: 3px 1px;
+  }
+  .tab .tx:hover { opacity: 1; }
+  .tab.on { background: var(--paper); color: #14161a; border-color: var(--paper); font-weight: 600; }
+  .tab:focus-visible { outline: 2px solid var(--amber); outline-offset: 2px; }
+
+  .tabtool {
+    background: var(--panel-hi);
+    color: var(--steel);
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    min-width: 40px; min-height: 40px;
+    padding: 0 11px;
+    font-family: var(--ui); font-size: 12px;
+    cursor: pointer; flex-shrink: 0;
+    transition: color .12s, border-color .12s;
+  }
+  .tabtool:hover { color: var(--paper); border-color: var(--steel-dim); }
+  .tabtool:focus-visible { outline: 2px solid var(--amber); outline-offset: 2px; }
+
+  textarea {
+    width: 100%; height: 118px;
+    background: var(--console); color: var(--text);
+    border: none; border-top: 1px solid var(--line);
+    padding: 14px 16px;
+    font-family: var(--disp); font-size: 16px; line-height: 1.6;
+    resize: none; outline: none;
+    white-space: pre-wrap;
+  }
+  textarea::placeholder { color: var(--steel-dim); }
+
+  .tip {
+    padding: 8px 16px;
+    padding-bottom: max(12px, env(safe-area-inset-bottom));
+    font-size: 10px; letter-spacing: .5px; color: var(--steel-dim);
+    line-height: 1.7;
+  }
+
+  .stage:fullscreen { background: #000; }
+  .stage:-webkit-full-screen { background: #000; }
+
+  @media (max-width: 760px) {
+    .brand .kind { display: none; }
+    .controls { gap: 12px; }
+    input[type=range] { width: 128px; }
+  }
+</style>
+</head>
+<body class="editor-open">
+
+  <div class="topbar">
+    <div class="brand">
+      <span class="name">JuScript</span>
+      <span class="kind">Teleprompter</span>
+    </div>
+    <div class="tally"><span class="dot"></span><span id="tallyLabel">Standby</span></div>
+    <div class="spacer"></div>
+
+    <div class="seg-ctl" role="group" aria-label="Scroll direction">
+      <button id="axisX" class="on" aria-pressed="true"><span class="arrow">←</span>Sideways</button>
+      <button id="axisY" aria-pressed="false"><span class="arrow">↑</span>Upward</button>
+    </div>
+
+    <button class="iconbtn" id="flipH" title="Mirror left-right for beam-splitter glass">Flip H</button>
+    <button class="iconbtn" id="flipV" title="Mirror top-bottom for beam-splitter glass">Flip V</button>
+    <button class="iconbtn" id="fsBtn" title="Fill the screen with the prompt">Fullscreen</button>
+  </div>
+
+  <div class="stage" id="stage" data-axis="x">
+    <div class="vignette"></div>
+    <div class="readline"></div>
+    <div class="placeholder" id="placeholder">Type or paste your script below, then press Play</div>
+    <div class="track" id="track"></div>
+  </div>
+
+  <div class="controls">
+    <button class="play" id="playBtn"><span id="playIcon">▶</span><span id="playLabel">PLAY</span></button>
+    <button class="iconbtn" id="resetBtn" title="Return to the start">Reset</button>
+
+    <div class="group">
+      <label>Speed</label>
+      <button class="step" id="speedDown" aria-label="Decrease speed">−</button>
+      <input type="range" id="speed" min="10" max="600" value="180" step="5" aria-label="Scroll speed">
+      <button class="step" id="speedUp" aria-label="Increase speed">+</button>
+      <span class="readout" id="speedOut">180</span>
+    </div>
+
+    <div class="group">
+      <label>Size</label>
+      <button class="step" id="sizeDown" aria-label="Decrease text size">−</button>
+      <input type="range" id="size" min="28" max="240" value="130" step="2" aria-label="Text size">
+      <button class="step" id="sizeUp" aria-label="Increase text size">+</button>
+      <span class="readout" id="sizeOut">130</span>
+    </div>
+
+    <div class="group">
+      <label>Color</label>
+      <div class="swatches" id="swatches">
+        <button class="swatch on" style="color:#ffb038" data-color="#ffb038" title="Amber"><i></i></button>
+        <button class="swatch" style="color:#4ade80" data-color="#4ade80" title="Green"><i></i></button>
+        <button class="swatch" style="color:#f4f2ec" data-color="#f4f2ec" title="White"><i></i></button>
+      </div>
+    </div>
+
+    <div class="group">
+      <label>Font</label>
+      <div class="seg-ctl" role="group" aria-label="Font style">
+        <button id="fontSans" class="on" aria-pressed="true">Sans</button>
+        <button id="fontSerif" aria-pressed="false">Serif</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="editor" id="editor">
+    <div class="editor-head" id="editorHead">
+      <span class="lbl">Scripts</span>
+      <span class="chev">▲</span>
+      <span class="count" id="count">0 words</span>
+    </div>
+    <div class="editor-body">
+      <div class="tabrow">
+        <div class="tabbar" id="tabbar"></div>
+        <button class="tabtool" id="newTab" title="New script" aria-label="New script">＋</button>
+        <button class="tabtool" id="importBtn" title="Import scripts from a backup file">Import</button>
+        <button class="tabtool" id="exportBtn" title="Save all scripts to a backup file">Export</button>
+        <input type="file" id="fileIn" accept=".json,application/json" hidden>
+      </div>
+      <textarea id="script" spellcheck="false" placeholder="Paste your script here. Line breaks and extra spaces are kept — in Upward mode they break the line, in Sideways mode they open a gap."></textarea>
+      <div class="tip">
+        While paused, tap any word on the stage to start from that point. Tap the stage while rolling to pause.
+        Tap the active tab to rename it. Export saves all scripts to a file — do this after big changes; the browser can clear its own storage.
+      </div>
+    </div>
+  </div>
+
+<script>
+(function () {
+  const stage       = document.getElementById('stage');
+  const track       = document.getElementById('track');
+  const placeholder = document.getElementById('placeholder');
+  const scriptEl    = document.getElementById('script');
+  const playBtn     = document.getElementById('playBtn');
+  const playIcon    = document.getElementById('playIcon');
+  const playLabel   = document.getElementById('playLabel');
+  const resetBtn    = document.getElementById('resetBtn');
+  const speedEl     = document.getElementById('speed');
+  const speedOut    = document.getElementById('speedOut');
+  const sizeEl      = document.getElementById('size');
+  const sizeOut     = document.getElementById('sizeOut');
+  const tallyLabel  = document.getElementById('tallyLabel');
+  const countEl     = document.getElementById('count');
+  const axisXBtn    = document.getElementById('axisX');
+  const axisYBtn    = document.getElementById('axisY');
+  const flipHBtn    = document.getElementById('flipH');
+  const flipVBtn    = document.getElementById('flipV');
+  const fsBtn       = document.getElementById('fsBtn');
+  const fontSansBtn = document.getElementById('fontSans');
+  const fontSerifBtn= document.getElementById('fontSerif');
+  const tabbar      = document.getElementById('tabbar');
+  const newTabBtn   = document.getElementById('newTab');
+  const exportBtn   = document.getElementById('exportBtn');
+  const importBtn   = document.getElementById('importBtn');
+  const fileIn      = document.getElementById('fileIn');
+
+  const KEY = 'juscript:v1';
+  const WELCOME = 'Welcome to JuScript. Paste a script here, or press + above to add another. While paused, tap any word on the stage to start from that point.';
+
+  let running = false;
+  let pos     = 0;      // px offset along the active axis; 0 at start, negative as it advances
+  let travel  = 0;
+  let lastTs  = null;
+  let lastPosSave = 0;
+  let wakeLock = null;
+
+  /* ---------- store ---------- */
+
+  function uid() { return Math.random().toString(36).slice(2, 10); }
+
+  function seed() {
+    const id = uid();
+    return {
+      scripts: [{ id: id, name: 'Script 1', text: WELCOME, posX: 0, posY: 0 }],
+      activeId: id,
+      settings: {
+        axis: 'x',
+        x: { speed: 180, size: 130 },
+        y: { speed: 70,  size: 64  },
+        color: '#ffb038',
+        font: 'sans',
+        flipH: false,
+        flipV: false
+      }
+    };
+  }
+
+  function load() {
+    try {
+      const raw = localStorage.getItem(KEY);
+      if (!raw) return null;
+      const s = JSON.parse(raw);
+      if (!s || !Array.isArray(s.scripts) || !s.scripts.length || !s.settings) return null;
+      if (!s.scripts.some(sc => sc.id === s.activeId)) s.activeId = s.scripts[0].id;
+      return s;
+    } catch (e) { return null; }
+  }
+
+  function save() {
+    try { localStorage.setItem(KEY, JSON.stringify(store)); } catch (e) { /* storage full or blocked */ }
+  }
+
+  let store = load() || seed();
+  let axis = (store.settings.axis === 'y') ? 'y' : 'x';
+
+  function active() { return store.scripts.find(s => s.id === store.activeId); }
+
+  function saveCurrentPos() {
+    const a = active();
+    if (!a) return;
+    if (axis === 'x') a.posX = pos; else a.posY = pos;
+  }
+
+  function persistSliders() {
+    store.settings[axis].speed = +speedEl.value;
+    store.settings[axis].size  = +sizeEl.value;
+    save();
+  }
+
+  /* ---------- rendering ---------- */
+
+  function buildWords(text, container) {
+    const parts = text.split(/(\s+)/);
+    for (const p of parts) {
+      if (!p) continue;
+      if (/^\s+$/.test(p)) {
+        container.appendChild(document.createTextNode(p));
+      } else {
+        const s = document.createElement('span');
+        s.className = 'w';
+        s.textContent = p;
+        container.appendChild(s);
+      }
+    }
+  }
+
+  function render() {
+    const raw = scriptEl.value;
+    placeholder.style.display = raw.trim().length ? 'none' : 'flex';
+    track.textContent = '';
+
+    if (axis === 'y') {
+      buildWords(raw, track);           // pre-wrap keeps newlines and space runs verbatim
+    } else {
+      raw.split('\n').forEach((line, i) => {
+        if (i > 0) {
+          const gap = document.createElement('span');
+          gap.className = 'gap';
+          track.appendChild(gap);
+        }
+        buildWords(line, track);        // white-space:pre keeps space runs, no wrapping
+      });
+    }
+
+    measure();
+    updateCount();
+  }
+
+  function measure() {
+    if (axis === 'x') {
+      track.style.paddingTop  = '';
+      track.style.paddingLeft = stage.clientWidth + 'px';
+      travel = track.scrollWidth;
+    } else {
+      track.style.paddingLeft = '';
+      track.style.paddingTop  = stage.clientHeight + 'px';
+      travel = track.scrollHeight;
+    }
+    clampPos();
+    applyTransform();
+  }
+
+  function clampPos() { pos = Math.max(-travel, Math.min(0, pos)); }
+
+  function applyTransform() {
+    track.style.transform = (axis === 'x')
+      ? 'translate(' + pos + 'px, -50%)'
+      : 'translate(-50%, ' + pos + 'px)';
+  }
+
+  function updateCount() {
+    const txt = scriptEl.value.trim();
+    const words = txt ? txt.split(/\s+/).length : 0;
+    const secs = travel / Math.max(1, +speedEl.value);
+    const m = Math.floor(secs / 60);
+    const s = Math.round(secs % 60);
+    const dur = words ? '  ·  ~' + m + ':' + String(s).padStart(2, '0') : '';
+    countEl.textContent = words + (words === 1 ? ' word' : ' words') + dur;
+  }
+
+  /* ---------- transport ---------- */
+
+  function frame(ts) {
+    if (!running) return;
+    if (lastTs === null) lastTs = ts;
+    const dt = Math.min((ts - lastTs) / 1000, 0.05);
+    lastTs = ts;
+
+    pos -= (+speedEl.value) * dt;
+    applyTransform();
+
+    if (ts - lastPosSave > 1500) {
+      saveCurrentPos(); save(); lastPosSave = ts;
+    }
+
+    if (-pos > travel) {
+      stop();
+      pos = 0;
+      saveCurrentPos();
+      applyTransform();
+      save();
+      return;
+    }
+    requestAnimationFrame(frame);
+  }
+
+  async function keepAwake() {
+    try { wakeLock = await navigator.wakeLock.request('screen'); } catch (e) { /* unsupported */ }
+  }
+  function letSleep() {
+    try { wakeLock && wakeLock.release(); } catch (e) {}
+    wakeLock = null;
+  }
+
+  function play() {
+    if (!scriptEl.value.trim()) {
+      document.body.classList.add('editor-open');
+      scriptEl.focus();
+      return;
+    }
+    running = true;
+    lastTs = null;
+    document.body.classList.add('live');
+    tallyLabel.textContent = 'On Air';
+    playIcon.textContent = '❚❚';
+    playLabel.textContent = 'PAUSE';
+    measure();
+    keepAwake();
+    requestAnimationFrame(frame);
+  }
+
+  function stop() {
+    running = false;
+    document.body.classList.remove('live');
+    tallyLabel.textContent = 'Standby';
+    playIcon.textContent = '▶';
+    playLabel.textContent = 'PLAY';
+    letSleep();
+    saveCurrentPos();
+    save();
+  }
+
+  function toggle() { running ? stop() : play(); }
+
+  function reset() { stop(); pos = 0; saveCurrentPos(); applyTransform(); save(); }
+
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') {
+      saveCurrentPos(); save();
+    } else if (running) {
+      keepAwake();
+    }
+  });
+  window.addEventListener('pagehide', () => { saveCurrentPos(); save(); });
+
+  /* ---------- tap to jump / tap to pause ---------- */
+
+  stage.addEventListener('click', (e) => {
+    if (running) { toggle(); return; }
+    const w = e.target.closest('.w');
+    if (!w || !track.contains(w)) return;
+    const target = (axis === 'x')
+      ? stage.clientWidth * 0.5 - w.offsetLeft
+      : stage.clientHeight * 0.42 - w.offsetTop;
+    pos = Math.max(-travel, Math.min(0, target));
+    applyTransform();
+    saveCurrentPos();
+    save();
+    w.classList.remove('hit');
+    void w.offsetWidth;               // restart the flash animation
+    w.classList.add('hit');
+  });
+
+  /* ---------- direction ---------- */
+
+  function setAxis(next) {
+    if (next === axis) return;
+    saveCurrentPos();
+    persistSliders();
+    stop();
+
+    axis = next;
+    store.settings.axis = axis;
+    stage.dataset.axis = axis;
+
+    speedEl.value = store.settings[axis].speed;
+    sizeEl.value  = store.settings[axis].size;
+    speedOut.textContent = speedEl.value;
+    sizeOut.textContent  = sizeEl.value;
+    track.style.fontSize = sizeEl.value + 'px';
+
+    axisXBtn.classList.toggle('on', axis === 'x');
+    axisYBtn.classList.toggle('on', axis === 'y');
+    axisXBtn.setAttribute('aria-pressed', axis === 'x');
+    axisYBtn.setAttribute('aria-pressed', axis === 'y');
+
+    const a = active();
+    pos = a ? (axis === 'x' ? a.posX : a.posY) || 0 : 0;
+    render();
+    save();
+  }
+
+  /* ---------- scripts / tabs ---------- */
+
+  function renderTabs() {
+    tabbar.textContent = '';
+    store.scripts.forEach(s => {
+      const b = document.createElement('button');
+      b.className = 'tab' + (s.id === store.activeId ? ' on' : '');
+      b.dataset.id = s.id;
+
+      const name = document.createElement('span');
+      name.className = 'tname';
+      name.textContent = s.name;
+      b.appendChild(name);
+
+      if (s.id === store.activeId) {
+        const x = document.createElement('span');
+        x.className = 'tx';
+        x.textContent = '×';
+        x.title = 'Delete this script';
+        b.appendChild(x);
+      }
+      tabbar.appendChild(b);
+    });
+  }
+
+  function loadActive() {
+    const a = active();
+    scriptEl.value = a ? a.text : '';
+    pos = a ? (axis === 'x' ? a.posX : a.posY) || 0 : 0;
+    render();               // measure() inside clamps pos and applies transform
+  }
+
+  function switchTo(id) {
+    if (id === store.activeId) return;
+    saveCurrentPos();
+    stop();
+    store.activeId = id;
+    loadActive();
+    renderTabs();
+    save();
+  }
+
+  function renameActive() {
+    const a = active();
+    if (!a) return;
+    const nn = prompt('Script name:', a.name);
+    if (nn && nn.trim()) {
+      a.name = nn.trim().slice(0, 60);
+      renderTabs();
+      save();
+    }
+  }
+
+  function deleteActive() {
+    const a = active();
+    if (!a) return;
+    if (!confirm('Delete "' + a.name + '"? This cannot be undone.')) return;
+    const idx = store.scripts.findIndex(s => s.id === a.id);
+    store.scripts.splice(idx, 1);
+    if (!store.scripts.length) {
+      const id = uid();
+      store.scripts.push({ id: id, name: 'Script 1', text: '', posX: 0, posY: 0 });
+    }
+    store.activeId = store.scripts[Math.max(0, idx - 1)].id;
+    stop();
+    loadActive();
+    renderTabs();
+    save();
+  }
+
+  function newScript() {
+    saveCurrentPos();
+    stop();
+    const id = uid();
+    store.scripts.push({ id: id, name: 'Script ' + (store.scripts.length + 1), text: '', posX: 0, posY: 0 });
+    store.activeId = id;
+    loadActive();
+    renderTabs();
+    save();
+    document.body.classList.add('editor-open');
+    scriptEl.focus();
+  }
+
+  tabbar.addEventListener('click', (e) => {
+    const tab = e.target.closest('.tab');
+    if (!tab) return;
+    if (e.target.closest('.tx')) { deleteActive(); return; }
+    if (tab.dataset.id === store.activeId) { renameActive(); return; }
+    switchTo(tab.dataset.id);
+  });
+
+  /* ---------- export / import ---------- */
+
+  function doExport() {
+    const payload = {
+      app: 'juscript',
+      version: 1,
+      exported: new Date().toISOString(),
+      scripts: store.scripts.map(s => ({ name: s.name, text: s.text }))
+    };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'juscript-' + new Date().toISOString().slice(0, 10) + '.json';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 4000);
+  }
+
+  function doImport(file) {
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const data = JSON.parse(reader.result);
+        const list = Array.isArray(data) ? data : data.scripts;
+        if (!Array.isArray(list) || !list.length) throw new Error('empty');
+        const clean = list
+          .filter(s => s && typeof s.text === 'string')
+          .map(s => ({
+            id: uid(),
+            name: (typeof s.name === 'string' && s.name.trim()) ? s.name.trim().slice(0, 60) : 'Imported',
+            text: s.text,
+            posX: 0, posY: 0
+          }));
+        if (!clean.length) throw new Error('none');
+        saveCurrentPos();
+        stop();
+        store.scripts = store.scripts.concat(clean);
+        store.activeId = clean[0].id;
+        loadActive();
+        renderTabs();
+        save();
+      } catch (err) {
+        alert("Couldn't read that file — it doesn't look like a JuScript export.");
+      }
+    };
+    reader.readAsText(file);
+  }
+
+  /* ---------- wiring ---------- */
+
+  function wire(el, fn) {
+    el.addEventListener('click', () => { fn(); el.blur(); });
+  }
+
+  wire(playBtn, toggle);
+  wire(resetBtn, reset);
+  wire(newTabBtn, newScript);
+  wire(exportBtn, doExport);
+  wire(importBtn, () => fileIn.click());
+  fileIn.addEventListener('change', () => {
+    if (fileIn.files && fileIn.files[0]) doImport(fileIn.files[0]);
+    fileIn.value = '';
+  });
+
+  wire(axisXBtn, () => setAxis('x'));
+  wire(axisYBtn, () => setAxis('y'));
+  wire(flipHBtn, () => {
+    stage.classList.toggle('flip-h');
+    store.settings.flipH = stage.classList.contains('flip-h');
+    flipHBtn.classList.toggle('on', store.settings.flipH);
+    save();
+  });
+  wire(flipVBtn, () => {
+    stage.classList.toggle('flip-v');
+    store.settings.flipV = stage.classList.contains('flip-v');
+    flipVBtn.classList.toggle('on', store.settings.flipV);
+    save();
+  });
+  wire(fsBtn, () => {
+    const inFs = document.fullscreenElement || document.webkitFullscreenElement;
+    if (!inFs) {
+      const req = stage.requestFullscreen || stage.webkitRequestFullscreen;
+      if (req) req.call(stage); else stage.scrollIntoView();
+    } else {
+      const exit = document.exitFullscreen || document.webkitExitFullscreen;
+      if (exit) exit.call(document);
+    }
+  });
+
+  function setFont(f) {
+    store.settings.font = f;
+    track.classList.toggle('font-serif', f === 'serif');
+    fontSansBtn.classList.toggle('on', f === 'sans');
+    fontSerifBtn.classList.toggle('on', f === 'serif');
+    fontSansBtn.setAttribute('aria-pressed', f === 'sans');
+    fontSerifBtn.setAttribute('aria-pressed', f === 'serif');
+    measure();
+    updateCount();
+    save();
+  }
+  wire(fontSansBtn, () => setFont('sans'));
+  wire(fontSerifBtn, () => setFont('serif'));
+
+  /* sliders + hold-to-repeat steppers */
+
+  function afterSpeed() { speedOut.textContent = speedEl.value; updateCount(); }
+  function afterSize() {
+    sizeOut.textContent = sizeEl.value;
+    track.style.fontSize = sizeEl.value + 'px';
+    measure();
+    updateCount();
+  }
+
+  speedEl.addEventListener('input', () => { afterSpeed(); });
+  speedEl.addEventListener('change', () => { persistSliders(); speedEl.blur(); });
+  sizeEl.addEventListener('input', () => { afterSize(); });
+  sizeEl.addEventListener('change', () => { persistSliders(); sizeEl.blur(); });
+
+  function bump(input, delta, after) {
+    input.value = Math.max(+input.min, Math.min(+input.max, +input.value + delta));
+    after();
+    persistSliders();
+  }
+
+  function holdable(btn, fn) {
+    let delay = null, rep = null, sup = false;
+    const stopRepeat = () => { clearTimeout(delay); clearInterval(rep); delay = rep = null; };
+    btn.addEventListener('pointerdown', (e) => {
+      sup = true;
+      fn();
+      stopRepeat();
+      delay = setTimeout(() => { rep = setInterval(fn, 80); }, 450);
+    });
+    ['pointerup', 'pointercancel', 'pointerleave'].forEach(ev =>
+      btn.addEventListener(ev, () => { stopRepeat(); btn.blur(); })
+    );
+    btn.addEventListener('click', (e) => {
+      if (sup) { sup = false; e.preventDefault(); return; }
+      fn();               // keyboard activation
+      btn.blur();
+    });
+  }
+
+  holdable(document.getElementById('speedDown'), () => bump(speedEl, -5, afterSpeed));
+  holdable(document.getElementById('speedUp'),   () => bump(speedEl,  5, afterSpeed));
+  holdable(document.getElementById('sizeDown'),  () => bump(sizeEl,  -2, afterSize));
+  holdable(document.getElementById('sizeUp'),    () => bump(sizeEl,   2, afterSize));
+
+  document.getElementById('swatches').addEventListener('click', (e) => {
+    const b = e.target.closest('.swatch');
+    if (!b) return;
+    document.querySelectorAll('.swatch').forEach(s => s.classList.remove('on'));
+    b.classList.add('on');
+    track.style.color = b.dataset.color;
+    store.settings.color = b.dataset.color;
+    save();
+    b.blur();
+  });
+
+  document.getElementById('editorHead').addEventListener('click', () => {
+    document.body.classList.toggle('editor-open');
+    requestAnimationFrame(measure);
+  });
+
+  scriptEl.addEventListener('input', () => {
+    const a = active();
+    if (a) a.text = scriptEl.value;
+    if (!running) { pos = 0; saveCurrentPos(); }
+    render();
+    save();
+  });
+
+  let rt;
+  window.addEventListener('resize', () => {
+    clearTimeout(rt);
+    rt = setTimeout(() => { measure(); updateCount(); }, 120);
+  });
+
+  /* ---------- init ---------- */
+
+  stage.dataset.axis = axis;
+  axisXBtn.classList.toggle('on', axis === 'x');
+  axisYBtn.classList.toggle('on', axis === 'y');
+  axisXBtn.setAttribute('aria-pressed', axis === 'x');
+  axisYBtn.setAttribute('aria-pressed', axis === 'y');
+
+  speedEl.value = store.settings[axis].speed;
+  sizeEl.value  = store.settings[axis].size;
+  speedOut.textContent = speedEl.value;
+  sizeOut.textContent  = sizeEl.value;
+  track.style.fontSize = sizeEl.value + 'px';
+
+  track.style.color = store.settings.color || '#ffb038';
+  document.querySelectorAll('.swatch').forEach(s =>
+    s.classList.toggle('on', s.dataset.color === (store.settings.color || '#ffb038'))
+  );
+
+  setFontInit();
+  function setFontInit() {
+    const f = store.settings.font === 'serif' ? 'serif' : 'sans';
+    track.classList.toggle('font-serif', f === 'serif');
+    fontSansBtn.classList.toggle('on', f === 'sans');
+    fontSerifBtn.classList.toggle('on', f === 'serif');
+    fontSansBtn.setAttribute('aria-pressed', f === 'sans');
+    fontSerifBtn.setAttribute('aria-pressed', f === 'serif');
+  }
+
+  if (store.settings.flipH) { stage.classList.add('flip-h'); flipHBtn.classList.add('on'); }
+  if (store.settings.flipV) { stage.classList.add('flip-v'); flipVBtn.classList.add('on'); }
+
+  renderTabs();
+  loadActive();
+  save();
+
+  if (document.fonts && document.fonts.ready) {
+    document.fonts.ready.then(() => { measure(); });
+  }
+})();
+</script>
+</body>
+</html>
