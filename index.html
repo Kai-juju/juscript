@@ -10,7 +10,7 @@
 <title>JuScript — Teleprompter</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Lora:wght@500;600&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Source+Serif+4:wght@500;600&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
   :root {
     --console:   #14161a;
@@ -127,7 +127,13 @@
     overflow: hidden;
     background: #000;
     min-height: 0;
+    touch-action: none;
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-touch-callout: none;
   }
+  body:not(.live) .stage { cursor: grab; }
+  .stage.scrubbing, .stage.scrubbing .w { cursor: grabbing; }
   .stage.flip-h { transform: scaleX(-1); }
   .stage.flip-v { transform: scaleY(-1); }
   .stage.flip-h.flip-v { transform: scale(-1, -1); }
@@ -188,7 +194,10 @@
     color: var(--amber);
     will-change: transform;
   }
-  .track.font-serif { font-family: "Lora", Georgia, "Times New Roman", serif; font-weight: 600; }
+  .track.font-serif {
+    font-family: "Tiempos Text", "Source Serif 4", Georgia, "Times New Roman", serif;
+    font-weight: 600;
+  }
 
   .stage[data-axis="x"] .track {
     left: 0; top: 50%;
@@ -223,7 +232,7 @@
 
   /* ---------- transport ---------- */
   .controls {
-    display: flex; align-items: center; gap: 18px;
+    display: flex; align-items: center; gap: 16px;
     padding: 12px 16px;
     background: var(--panel);
     border-top: 1px solid var(--line);
@@ -250,7 +259,7 @@
   }
   .readout {
     font-size: 12px; color: var(--steel);
-    min-width: 38px; text-align: right;
+    min-width: 40px; text-align: right;
     font-variant-numeric: tabular-nums;
   }
 
@@ -271,7 +280,7 @@
   input[type=range] {
     -webkit-appearance: none; appearance: none;
     background: transparent;
-    width: 168px; height: 44px; cursor: pointer;
+    width: 150px; height: 44px; cursor: pointer;
   }
   input[type=range]::-webkit-slider-runnable-track {
     height: 6px; background: var(--line); border-radius: 3px;
@@ -395,7 +404,7 @@
   @media (max-width: 760px) {
     .brand .kind { display: none; }
     .controls { gap: 12px; }
-    input[type=range] { width: 128px; }
+    input[type=range] { width: 116px; }
   }
 </style>
 </head>
@@ -431,11 +440,19 @@
     <button class="iconbtn" id="resetBtn" title="Return to the start">Reset</button>
 
     <div class="group">
-      <label>Speed</label>
-      <button class="step" id="speedDown" aria-label="Decrease speed">−</button>
-      <input type="range" id="speed" min="10" max="600" value="180" step="5" aria-label="Scroll speed">
-      <button class="step" id="speedUp" aria-label="Increase speed">+</button>
-      <span class="readout" id="speedOut">180</span>
+      <label>Speed · WPM</label>
+      <button class="step" id="speedDown" aria-label="Decrease words per minute">−</button>
+      <input type="range" id="speed" min="60" max="280" value="145" step="5" aria-label="Speaking pace in words per minute">
+      <button class="step" id="speedUp" aria-label="Increase words per minute">+</button>
+      <span class="readout" id="speedOut">145</span>
+    </div>
+
+    <div class="group">
+      <label>Pacing</label>
+      <button class="step" id="paceDown" aria-label="Decrease speech pacing">−</button>
+      <input type="range" id="pace" min="0" max="100" value="25" step="5" aria-label="Speech pacing amount">
+      <button class="step" id="paceUp" aria-label="Increase speech pacing">+</button>
+      <span class="readout" id="paceOut">25%</span>
     </div>
 
     <div class="group">
@@ -480,8 +497,9 @@
       </div>
       <textarea id="script" spellcheck="false" placeholder="Paste your script here. Line breaks and extra spaces are kept — in Upward mode they break the line, in Sideways mode they open a gap."></textarea>
       <div class="tip">
-        While paused, tap any word on the stage to start from that point. Tap the stage while rolling to pause.
-        Tap the active tab to rename it. Export saves all scripts to a file — do this after big changes; the browser can clear its own storage.
+        Drag the stage to move through the script; while paused, tap any word to snap it to the reading line. Tap the stage while rolling to pause. Tap the active tab to rename it.
+        Pacing at 0% scrolls at one constant speed; at 100% it follows natural speech timing — syllables, numbers, and punctuation pauses.
+        Export saves all scripts to a file — do this after big changes; the browser can clear its own storage.
       </div>
     </div>
   </div>
@@ -498,6 +516,8 @@
   const resetBtn    = document.getElementById('resetBtn');
   const speedEl     = document.getElementById('speed');
   const speedOut    = document.getElementById('speedOut');
+  const paceEl      = document.getElementById('pace');
+  const paceOut     = document.getElementById('paceOut');
   const sizeEl      = document.getElementById('size');
   const sizeOut     = document.getElementById('sizeOut');
   const tallyLabel  = document.getElementById('tallyLabel');
@@ -516,14 +536,225 @@
   const fileIn      = document.getElementById('fileIn');
 
   const KEY = 'juscript:v1';
-  const WELCOME = 'Welcome to JuScript. Paste a script here, or press + above to add another. While paused, tap any word on the stage to start from that point.';
+  const WELCOME = 'Welcome to JuScript. Paste a script here, or press + above to add another. Drag the stage to move through the script, or tap a word to snap it to the reading line.';
 
   let running = false;
   let pos     = 0;      // px offset along the active axis; 0 at start, negative as it advances
+  let tCur    = 0;      // seconds elapsed along the timeline
   let travel  = 0;
   let lastTs  = null;
   let lastPosSave = 0;
   let wakeLock = null;
+
+  // pacing timeline
+  let spline = null;    // t (s) -> pos (px)
+  let TTotal = 0;       // full duration in seconds
+  let tsA = null, ysA = null;   // blended anchors, for inverse lookup
+  let wordT = [], wordP = [];   // per-word blended time / position
+
+  /* ---- pacing math ---- */
+
+  // syllable counts for spoken numbers: zero..nineteen, then tens
+  const ONES = [2,1,1,1,1,1,1,2,1,1,1,3,1,2,2,2,2,3,2,2];
+  const TENS = [0,0,2,2,2,2,2,3,2,2];
+
+  function numSyl(n) {
+    n = Math.floor(Math.abs(n));
+    if (n < 20) return ONES[n];
+    if (n < 100) { const r = n % 10; return TENS[(n / 10) | 0] + (r ? ONES[r] : 0); }
+    if (n < 1000) { const r = n % 100; return ONES[(n / 100) | 0] + 2 + (r ? numSyl(r) : 0); }
+    let s = 0, x = n;
+    const units = [[1e9, 2], [1e6, 2], [1e3, 2]];
+    for (const [u, us] of units) {
+      if (x >= u) { s += numSyl((x / u) | 0) + us; x %= u; }
+    }
+    return s + (x ? numSyl(x) : 0);
+  }
+
+  function sylCount(tok) {
+    let w = tok.replace(/^[^A-Za-z0-9$&]+|[^A-Za-z0-9%]+$/g, '');
+    if (!w) return 1;
+    if (w === '&') return 1;
+    let extra = 0;
+    if (w[0] === '$') { extra += 2; w = w.slice(1); }          // "dollars"
+    if (/%$/.test(w)) { extra += 2; w = w.replace(/%$/, ''); } // "percent"
+    if (!w) return Math.max(1, extra);
+
+    // plain number, optionally with commas / decimal
+    if (/^\d[\d,]*(\.\d+)?$/.test(w)) {
+      const parts = w.replace(/,/g, '').split('.');
+      const ip = parts[0], dp = parts[1];
+      let s;
+      const n = parseInt(ip, 10) || 0;
+      if (ip.length === 4 && n >= 1100 && n <= 2999 && n % 100 !== 0) {
+        s = numSyl((n / 100) | 0) + numSyl(n % 100);           // "twenty twenty-six"
+      } else if (ip.length > 12) {
+        s = ip.length;                                          // read digit by digit
+      } else {
+        s = numSyl(n);
+      }
+      if (dp) s += 1 + [...dp].reduce((a, d) => a + ONES[+d], 0); // "point ..."
+      return Math.max(1, s + extra);
+    }
+
+    // mixed like 4K, MP4 — split runs and sum
+    if (/\d/.test(w) && /[A-Za-z]/.test(w)) {
+      let s = 0;
+      for (const run of (w.match(/\d+|[A-Za-z]+/g) || [])) s += sylCount(run);
+      return Math.max(1, s + extra);
+    }
+
+    // acronym spoken letter by letter: 2-6 capitals (dots allowed)
+    const bare = w.replace(/\./g, '');
+    if (/^[A-Z]{2,6}$/.test(bare)) {
+      return extra + [...bare].reduce((a, c) => a + (c === 'W' ? 3 : 1), 0);
+    }
+
+    // ordinary word(s); handle hyphens and possessives
+    let total = 0;
+    for (const part of w.toLowerCase().replace(/['\u2019]s?$/, '').split(/[-\u2013/]/)) {
+      const p = part.replace(/[^a-z]/g, '');
+      if (!p) continue;
+      let c = (p.match(/[aeiouy]+/g) || []).length;
+      if (c > 1 && /e$/.test(p) && !/le$/.test(p)) c--;                 // silent e
+      if (c > 1 && /[^aeiouy]ed$/.test(p) && !/[td]ed$/.test(p)) c--;   // walked, not added
+      total += Math.max(1, c);
+    }
+    return Math.max(1, total + extra);
+  }
+
+  function pauseFor(tok, ws) {
+    let p = 0;
+    if (/[.!?\u2026]["')\]]*$/.test(tok)) p += 0.5;
+    else if (/[,;:\u2014\u2013]["')\]]*$/.test(tok)) p += 0.24;
+    const nl = (ws.match(/\n/g) || []).length;
+    if (nl >= 2) p += 0.8;
+    else if (nl === 1) p += 0.35;
+    return Math.min(p, 1.3);
+  }
+
+  function spokenLen(tok) {
+    const bare = tok.replace(/[^A-Za-z0-9]/g, '');
+    if (!bare) return 1;
+    if (/^\d/.test(bare) || /^[A-Z]{2,6}$/.test(bare)) return null; // expanded forms: caller falls back to syllables
+    return Math.max(1, bare.length);
+  }
+
+  // Pure timing engine. items: [{off, offEnd, syl, pause, slen}] in reading order.
+  // opts: {C, travel, wpm, alpha}. Returns anchor times/positions, total duration,
+  // and the anchor index for each word's start.
+  function buildAnchors(items, opts) {
+    const n = items.length;
+    if (!n) return null;
+    const LAMBDA = 0.3;   // phonetic-length weighting
+
+    let R = 0;
+    for (const it of items) R += it.syl + LAMBDA * it.slen;
+    const Twords = 60 * n / Math.max(60, opts.wpm);
+    const dur = items.map(it => Math.max(0.09, (it.syl + LAMBDA * it.slen) / R * Twords));
+
+    let Tsp = 0;
+    for (let i = 0; i < n; i++) Tsp += dur[i] + items[i].pause;
+
+    const span = Math.max(1, items[n - 1].offEnd - items[0].off);
+    const vAvg = span / Math.max(0.4, Tsp);
+    const A0 = opts.C - items[0].off;
+    const Lin = Math.max(0.15, (A0 < 0 ? -A0 : 0) / vAvg);
+
+    // speech-exact anchors; pauses become their own segments (holds / slow drifts)
+    const ts = [0], ys = [0], wordIdx = new Array(n);
+    let t = Lin;
+    ts.push(t); ys.push(A0); wordIdx[0] = ts.length - 1;
+    for (let i = 0; i < n; i++) {
+      t += dur[i];
+      const endPos = opts.C - items[i].offEnd;
+      if (i < n - 1) {
+        if (items[i].pause > 0.01) {
+          ts.push(t); ys.push(endPos);      // word finishes on the line
+          t += items[i].pause;              // ...then the pause drifts across the gap
+        }
+        ts.push(t); ys.push(opts.C - items[i + 1].off);
+        wordIdx[i + 1] = ts.length - 1;
+      } else {
+        ts.push(t); ys.push(endPos);
+        if (items[i].pause > 0.01) {
+          t += items[i].pause;
+          ts.push(t); ys.push(endPos);      // trailing hold
+        }
+      }
+    }
+    const lastPos = ys[ys.length - 1];
+    const Lout = Math.max(0.15, (lastPos - (-opts.travel)) / vAvg);
+    t += Lout;
+    ts.push(t); ys.push(-opts.travel);
+    const T = t;
+
+    // blend toward constant speed, with a readability ceiling on segment velocity
+    const v0 = opts.travel / T;
+    const vMax = 1.5 * v0;
+    const alpha = Math.max(0, Math.min(1, opts.alpha));
+    const bys = [0];
+    let acc = 0;
+    for (let k = 0; k < ts.length - 1; k++) {
+      const dt = ts[k + 1] - ts[k];
+      const vSp = (ys[k] - ys[k + 1]) / dt;
+      let a = alpha;
+      if (vSp > vMax) a = Math.min(alpha, Math.max(0, (vMax - v0) / (vSp - v0)));
+      const v = (1 - a) * v0 + a * vSp;
+      acc -= v * dt;
+      bys.push(acc);
+    }
+    const scale = (-opts.travel) / acc;
+    for (let k = 0; k < bys.length; k++) bys[k] *= scale;
+
+    return { ts: ts, ys: bys, T: T, wordIdx: wordIdx };
+  }
+
+  function tokenize(raw) {
+    const out = [];
+    const re = /(\S+)(\s*)/g;
+    let m;
+    while ((m = re.exec(raw))) out.push({ w: m[1], ws: m[2] });
+    return out;
+  }
+
+  // monotone cubic interpolation (Fritsch-Carlson) through (ts, ys)
+  function pchip(ts, ys) {
+    const n = ts.length;
+    const h = [], d = [];
+    for (let i = 0; i < n - 1; i++) {
+      h[i] = ts[i + 1] - ts[i];
+      d[i] = (ys[i + 1] - ys[i]) / h[i];
+    }
+    const m = new Array(n);
+    m[0] = d[0];
+    m[n - 1] = d[n - 2];
+    for (let i = 1; i < n - 1; i++) {
+      if (d[i - 1] * d[i] <= 0) m[i] = 0;
+      else {
+        const w1 = 2 * h[i] + h[i - 1], w2 = h[i] + 2 * h[i - 1];
+        m[i] = (w1 + w2) / (w1 / d[i - 1] + w2 / d[i]);
+      }
+    }
+    let seg = 0;
+    return function (t) {
+      if (t <= ts[0]) return ys[0];
+      if (t >= ts[n - 1]) return ys[n - 1];
+      if (!(ts[seg] <= t && t < ts[seg + 1])) {
+        let lo = 0, hi = n - 1;
+        while (hi - lo > 1) {
+          const mid = (lo + hi) >> 1;
+          if (ts[mid] <= t) lo = mid; else hi = mid;
+        }
+        seg = lo;
+      }
+      const i = seg, x = (t - ts[i]) / h[i], x2 = x * x, x3 = x2 * x;
+      return ys[i] * (2 * x3 - 3 * x2 + 1) + h[i] * m[i] * (x3 - 2 * x2 + x)
+           + ys[i + 1] * (-2 * x3 + 3 * x2) + h[i] * m[i + 1] * (x3 - x2);
+    };
+  }
+
+  /* ---- end pacing math ---- */
 
   /* ---------- store ---------- */
 
@@ -536,8 +767,10 @@
       activeId: id,
       settings: {
         axis: 'x',
-        x: { speed: 180, size: 130 },
-        y: { speed: 70,  size: 64  },
+        x: { size: 130 },
+        y: { size: 64 },
+        wpm: 145,
+        pacing: 25,
         color: '#ffb038',
         font: 'sans',
         flipH: false,
@@ -553,6 +786,13 @@
       const s = JSON.parse(raw);
       if (!s || !Array.isArray(s.scripts) || !s.scripts.length || !s.settings) return null;
       if (!s.scripts.some(sc => sc.id === s.activeId)) s.activeId = s.scripts[0].id;
+      // migrate from the px-per-second build
+      if (typeof s.settings.wpm !== 'number') s.settings.wpm = 145;
+      if (typeof s.settings.pacing !== 'number') s.settings.pacing = 25;
+      if (!s.settings.x) s.settings.x = { size: 130 };
+      if (!s.settings.y) s.settings.y = { size: 64 };
+      delete s.settings.x.speed;
+      delete s.settings.y.speed;
       return s;
     } catch (e) { return null; }
   }
@@ -572,9 +812,10 @@
     if (axis === 'x') a.posX = pos; else a.posY = pos;
   }
 
-  function persistSliders() {
-    store.settings[axis].speed = +speedEl.value;
-    store.settings[axis].size  = +sizeEl.value;
+  function persistControls() {
+    store.settings.wpm = +speedEl.value;
+    store.settings.pacing = +paceEl.value;
+    store.settings[axis].size = +sizeEl.value;
     save();
   }
 
@@ -628,7 +869,69 @@
       travel = track.scrollHeight;
     }
     clampPos();
+    buildTimeline();
     applyTransform();
+  }
+
+  function buildTimeline() {
+    spline = null; TTotal = 0; tsA = null; ysA = null; wordT = []; wordP = [];
+
+    const words = Array.from(track.querySelectorAll('.w'));
+    if (!words.length) { tCur = 0; return; }
+
+    const toks = tokenize(scriptEl.value);
+    const n = Math.min(toks.length, words.length);
+    const C = (axis === 'x') ? stage.clientWidth * 0.5 : stage.clientHeight * 0.42;
+
+    const items = [];
+    for (let i = 0; i < n; i++) {
+      const el = words[i];
+      el.dataset.wi = i;
+      const off = (axis === 'x') ? el.offsetLeft : el.offsetTop;
+      const offEnd = (axis === 'x') ? el.offsetLeft + el.offsetWidth : el.offsetTop;
+      const s = sylCount(toks[i].w);
+      const sl = spokenLen(toks[i].w);
+      items.push({
+        off: off,
+        offEnd: offEnd,
+        syl: s,
+        pause: pauseFor(toks[i].w, toks[i].ws),
+        slen: (sl == null) ? s * 3.5 : sl
+      });
+    }
+
+    const built = buildAnchors(items, {
+      C: C,
+      travel: travel,
+      wpm: +speedEl.value,
+      alpha: (+paceEl.value) / 100
+    });
+    if (!built) { tCur = 0; return; }
+
+    spline = pchip(built.ts, built.ys);
+    tsA = built.ts; ysA = built.ys; TTotal = built.T;
+    for (let i = 0; i < n; i++) {
+      wordT[i] = built.ts[built.wordIdx[i]];
+      wordP[i] = built.ys[built.wordIdx[i]];
+    }
+
+    tCur = invertPos(pos);
+  }
+
+  function invertPos(p) {
+    if (!tsA) return 0;
+    p = Math.max(-travel, Math.min(0, p));
+    const n = ysA.length;
+    if (p >= ysA[0]) return tsA[0];
+    if (p <= ysA[n - 1]) return tsA[n - 1];
+    let lo = 0, hi = n - 1;
+    while (hi - lo > 1) {
+      const mid = (lo + hi) >> 1;
+      if (ysA[mid] >= p) lo = mid; else hi = mid;
+    }
+    const y0 = ysA[lo], y1 = ysA[hi];
+    if (y0 === y1) return tsA[lo];
+    return tsA[lo] + (y0 - p) / (y0 - y1) * (tsA[hi] - tsA[lo]);
   }
 
   function clampPos() { pos = Math.max(-travel, Math.min(0, pos)); }
@@ -642,10 +945,12 @@
   function updateCount() {
     const txt = scriptEl.value.trim();
     const words = txt ? txt.split(/\s+/).length : 0;
-    const secs = travel / Math.max(1, +speedEl.value);
-    const m = Math.floor(secs / 60);
-    const s = Math.round(secs % 60);
-    const dur = words ? '  ·  ~' + m + ':' + String(s).padStart(2, '0') : '';
+    let dur = '';
+    if (words && TTotal > 0) {
+      const m = Math.floor(TTotal / 60);
+      const s = Math.round(TTotal % 60);
+      dur = '  \u00b7  ~' + m + ':' + String(s).padStart(2, '0');
+    }
     countEl.textContent = words + (words === 1 ? ' word' : ' words') + dur;
   }
 
@@ -653,25 +958,28 @@
 
   function frame(ts) {
     if (!running) return;
+    if (!spline) { stop(); return; }
     if (lastTs === null) lastTs = ts;
     const dt = Math.min((ts - lastTs) / 1000, 0.05);
     lastTs = ts;
 
-    pos -= (+speedEl.value) * dt;
-    applyTransform();
+    tCur += dt;
 
     if (ts - lastPosSave > 1500) {
       saveCurrentPos(); save(); lastPosSave = ts;
     }
 
-    if (-pos > travel) {
+    if (tCur >= TTotal) {
       stop();
-      pos = 0;
+      tCur = 0; pos = 0;
       saveCurrentPos();
       applyTransform();
       save();
       return;
     }
+
+    pos = spline(tCur);
+    applyTransform();
     requestAnimationFrame(frame);
   }
 
@@ -693,7 +1001,7 @@
     lastTs = null;
     document.body.classList.add('live');
     tallyLabel.textContent = 'On Air';
-    playIcon.textContent = '❚❚';
+    playIcon.textContent = '\u275a\u275a';
     playLabel.textContent = 'PAUSE';
     measure();
     keepAwake();
@@ -704,7 +1012,7 @@
     running = false;
     document.body.classList.remove('live');
     tallyLabel.textContent = 'Standby';
-    playIcon.textContent = '▶';
+    playIcon.textContent = '\u25b6';
     playLabel.textContent = 'PLAY';
     letSleep();
     saveCurrentPos();
@@ -713,7 +1021,7 @@
 
   function toggle() { running ? stop() : play(); }
 
-  function reset() { stop(); pos = 0; saveCurrentPos(); applyTransform(); save(); }
+  function reset() { stop(); pos = 0; tCur = 0; saveCurrentPos(); applyTransform(); save(); }
 
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'hidden') {
@@ -724,21 +1032,75 @@
   });
   window.addEventListener('pagehide', () => { saveCurrentPos(); save(); });
 
-  /* ---------- tap to jump / tap to pause ---------- */
+  /* ---------- scrub / tap to jump / tap to pause ---------- */
+
+  let scrub = null;         // active drag gesture
+  let suppressTap = false;  // eat the click generated by a drag or a pause-tap
+
+  stage.addEventListener('pointerdown', (e) => {
+    suppressTap = false;
+    if (scrub || !scriptEl.value.trim()) return;
+    const wasRunning = running;
+    if (running) stop();                    // grabbing the stage pauses it
+    scrub = { id: e.pointerId, x: e.clientX, y: e.clientY, startPos: pos, moved: false, wasRunning: wasRunning };
+  });
+
+  stage.addEventListener('pointermove', (e) => {
+    if (!scrub || e.pointerId !== scrub.id) return;
+    const dx = e.clientX - scrub.x;
+    const dy = e.clientY - scrub.y;
+    if (!scrub.moved) {
+      if (Math.hypot(dx, dy) < 7) return;   // still a tap
+      scrub.moved = true;
+      stage.classList.add('scrubbing');
+      try { stage.setPointerCapture(e.pointerId); } catch (err) {}
+    }
+    const flipped = (axis === 'x')
+      ? stage.classList.contains('flip-h')
+      : stage.classList.contains('flip-v');
+    const d = ((axis === 'x') ? dx : dy) * (flipped ? -1 : 1);
+    pos = Math.max(-travel, Math.min(0, scrub.startPos + d));
+    applyTransform();
+  });
+
+  function endScrub(e) {
+    if (!scrub || e.pointerId !== scrub.id) return;
+    const s = scrub;
+    scrub = null;
+    stage.classList.remove('scrubbing');
+    if (s.moved) {
+      tCur = invertPos(pos);
+      saveCurrentPos();
+      save();
+      suppressTap = true;
+    } else if (s.wasRunning) {
+      suppressTap = true;                   // a plain tap that paused: no jump
+    }
+  }
+  window.addEventListener('pointerup', endScrub);
+  window.addEventListener('pointercancel', endScrub);
 
   stage.addEventListener('click', (e) => {
+    if (suppressTap) { suppressTap = false; return; }
     if (running) { toggle(); return; }
     const w = e.target.closest('.w');
     if (!w || !track.contains(w)) return;
-    const target = (axis === 'x')
-      ? stage.clientWidth * 0.5 - w.offsetLeft
-      : stage.clientHeight * 0.42 - w.offsetTop;
-    pos = Math.max(-travel, Math.min(0, target));
+    const wi = +w.dataset.wi;
+    if (wordT[wi] != null) {
+      tCur = wordT[wi];
+      pos = Math.max(-travel, Math.min(0, wordP[wi]));
+    } else {
+      const target = (axis === 'x')
+        ? stage.clientWidth * 0.5 - w.offsetLeft
+        : stage.clientHeight * 0.42 - w.offsetTop;
+      pos = Math.max(-travel, Math.min(0, target));
+      tCur = invertPos(pos);
+    }
     applyTransform();
     saveCurrentPos();
     save();
     w.classList.remove('hit');
-    void w.offsetWidth;               // restart the flash animation
+    void w.offsetWidth;
     w.classList.add('hit');
   });
 
@@ -747,17 +1109,15 @@
   function setAxis(next) {
     if (next === axis) return;
     saveCurrentPos();
-    persistSliders();
+    persistControls();
     stop();
 
     axis = next;
     store.settings.axis = axis;
     stage.dataset.axis = axis;
 
-    speedEl.value = store.settings[axis].speed;
-    sizeEl.value  = store.settings[axis].size;
-    speedOut.textContent = speedEl.value;
-    sizeOut.textContent  = sizeEl.value;
+    sizeEl.value = store.settings[axis].size;
+    sizeOut.textContent = sizeEl.value;
     track.style.fontSize = sizeEl.value + 'px';
 
     axisXBtn.classList.toggle('on', axis === 'x');
@@ -788,7 +1148,7 @@
       if (s.id === store.activeId) {
         const x = document.createElement('span');
         x.className = 'tx';
-        x.textContent = '×';
+        x.textContent = '\u00d7';
         x.title = 'Delete this script';
         b.appendChild(x);
       }
@@ -800,7 +1160,7 @@
     const a = active();
     scriptEl.value = a ? a.text : '';
     pos = a ? (axis === 'x' ? a.posX : a.posY) || 0 : 0;
-    render();               // measure() inside clamps pos and applies transform
+    render();               // measure() inside clamps pos, rebuilds timeline, applies transform
   }
 
   function switchTo(id) {
@@ -906,7 +1266,7 @@
         renderTabs();
         save();
       } catch (err) {
-        alert("Couldn't read that file — it doesn't look like a JuScript export.");
+        alert("Couldn't read that file \u2014 it doesn't look like a JuScript export.");
       }
     };
     reader.readAsText(file);
@@ -969,7 +1329,18 @@
 
   /* sliders + hold-to-repeat steppers */
 
-  function afterSpeed() { speedOut.textContent = speedEl.value; updateCount(); }
+  function afterSpeed() {
+    speedOut.textContent = speedEl.value;
+    buildTimeline();
+    applyTransform();
+    updateCount();
+  }
+  function afterPace() {
+    paceOut.textContent = paceEl.value + '%';
+    buildTimeline();
+    applyTransform();
+    updateCount();
+  }
   function afterSize() {
     sizeOut.textContent = sizeEl.value;
     track.style.fontSize = sizeEl.value + 'px';
@@ -977,21 +1348,23 @@
     updateCount();
   }
 
-  speedEl.addEventListener('input', () => { afterSpeed(); });
-  speedEl.addEventListener('change', () => { persistSliders(); speedEl.blur(); });
-  sizeEl.addEventListener('input', () => { afterSize(); });
-  sizeEl.addEventListener('change', () => { persistSliders(); sizeEl.blur(); });
+  speedEl.addEventListener('input', afterSpeed);
+  speedEl.addEventListener('change', () => { persistControls(); speedEl.blur(); });
+  paceEl.addEventListener('input', afterPace);
+  paceEl.addEventListener('change', () => { persistControls(); paceEl.blur(); });
+  sizeEl.addEventListener('input', afterSize);
+  sizeEl.addEventListener('change', () => { persistControls(); sizeEl.blur(); });
 
   function bump(input, delta, after) {
     input.value = Math.max(+input.min, Math.min(+input.max, +input.value + delta));
     after();
-    persistSliders();
+    persistControls();
   }
 
   function holdable(btn, fn) {
     let delay = null, rep = null, sup = false;
     const stopRepeat = () => { clearTimeout(delay); clearInterval(rep); delay = rep = null; };
-    btn.addEventListener('pointerdown', (e) => {
+    btn.addEventListener('pointerdown', () => {
       sup = true;
       fn();
       stopRepeat();
@@ -1009,6 +1382,8 @@
 
   holdable(document.getElementById('speedDown'), () => bump(speedEl, -5, afterSpeed));
   holdable(document.getElementById('speedUp'),   () => bump(speedEl,  5, afterSpeed));
+  holdable(document.getElementById('paceDown'),  () => bump(paceEl,  -5, afterPace));
+  holdable(document.getElementById('paceUp'),    () => bump(paceEl,   5, afterPace));
   holdable(document.getElementById('sizeDown'),  () => bump(sizeEl,  -2, afterSize));
   holdable(document.getElementById('sizeUp'),    () => bump(sizeEl,   2, afterSize));
 
@@ -1031,7 +1406,7 @@
   scriptEl.addEventListener('input', () => {
     const a = active();
     if (a) a.text = scriptEl.value;
-    if (!running) { pos = 0; saveCurrentPos(); }
+    if (!running) { pos = 0; tCur = 0; saveCurrentPos(); }
     render();
     save();
   });
@@ -1050,9 +1425,11 @@
   axisXBtn.setAttribute('aria-pressed', axis === 'x');
   axisYBtn.setAttribute('aria-pressed', axis === 'y');
 
-  speedEl.value = store.settings[axis].speed;
+  speedEl.value = store.settings.wpm;
+  paceEl.value  = store.settings.pacing;
   sizeEl.value  = store.settings[axis].size;
   speedOut.textContent = speedEl.value;
+  paceOut.textContent  = paceEl.value + '%';
   sizeOut.textContent  = sizeEl.value;
   track.style.fontSize = sizeEl.value + 'px';
 
@@ -1061,15 +1438,14 @@
     s.classList.toggle('on', s.dataset.color === (store.settings.color || '#ffb038'))
   );
 
-  setFontInit();
-  function setFontInit() {
+  (function setFontInit() {
     const f = store.settings.font === 'serif' ? 'serif' : 'sans';
     track.classList.toggle('font-serif', f === 'serif');
     fontSansBtn.classList.toggle('on', f === 'sans');
     fontSerifBtn.classList.toggle('on', f === 'serif');
     fontSansBtn.setAttribute('aria-pressed', f === 'sans');
     fontSerifBtn.setAttribute('aria-pressed', f === 'serif');
-  }
+  })();
 
   if (store.settings.flipH) { stage.classList.add('flip-h'); flipHBtn.classList.add('on'); }
   if (store.settings.flipV) { stage.classList.add('flip-v'); flipVBtn.classList.add('on'); }
