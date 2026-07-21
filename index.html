@@ -1,4 +1,5 @@
 <!DOCTYPE html>
+<!-- JuScript v1.5 -->
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -10,7 +11,7 @@
 <title>JuScript — Teleprompter</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Source+Serif+4:wght@500;600&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600&family=Source+Serif+4:wght@500;600&family=Space+Grotesk:wght@700&display=swap" rel="stylesheet">
 <style>
   :root {
     --console:   #14161a;
@@ -20,12 +21,13 @@
     --steel:     #8a94a6;
     --steel-dim: #5a6270;
     --amber:     #ffb038;
-    --green:     #4ade80;
+    --green:     #60ff00;
     --paper:     #f4f2ec;
     --tally:     #ff3b30;
     --text:      #d7dce5;
-    --readline:  #ffb038;
+    --readline:  #ffbf00;
     --ui:  "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+    --sans: "Styrene B", "Inter", -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif;
     --disp: "Space Grotesk", -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif;
   }
 
@@ -51,9 +53,9 @@
   .topbar {
     display: flex;
     align-items: center;
-    gap: 12px;
-    padding: 10px 16px;
-    padding-top: max(10px, env(safe-area-inset-top));
+    gap: 10px;
+    padding: 8px 14px;
+    padding-top: max(8px, env(safe-area-inset-top));
     background: var(--panel);
     border-bottom: 1px solid var(--line);
     flex-shrink: 0;
@@ -61,30 +63,16 @@
   }
 
   .brand { display: flex; align-items: baseline; gap: 9px; font-family: var(--disp); }
-  .brand .name { font-weight: 700; font-size: 17px; letter-spacing: 1.5px; color: var(--paper); }
+  .brand .name { font-weight: 700; font-size: 15px; letter-spacing: 1.5px; color: var(--paper); }
   .brand .kind {
     font-family: var(--ui); font-size: 9px; letter-spacing: 2.5px;
     text-transform: uppercase; color: var(--steel-dim);
   }
 
-  .tally {
-    display: flex; align-items: center; gap: 7px;
-    padding: 6px 11px 6px 9px;
-    border: 1px solid var(--line); border-radius: 3px;
-    font-size: 9px; letter-spacing: 2px; color: var(--steel-dim); text-transform: uppercase;
+  .ver {
+    font-size: 10px; letter-spacing: 1.5px; color: var(--steel-dim);
+    font-variant-numeric: tabular-nums;
   }
-  .tally .dot {
-    width: 9px; height: 9px; border-radius: 50%;
-    background: var(--steel-dim); transition: background .15s, box-shadow .15s;
-  }
-  body.live .tally { color: var(--tally); border-color: #5a2420; }
-  body.live .tally .dot {
-    background: var(--tally);
-    box-shadow: 0 0 10px var(--tally);
-    animation: pulse 1.4s ease-in-out infinite;
-  }
-  @keyframes pulse { 50% { opacity: .5; } }
-  @media (prefers-reduced-motion: reduce) { body.live .tally .dot { animation: none; } }
 
   .spacer { flex: 1; }
 
@@ -94,7 +82,7 @@
     color: var(--steel-dim);
     border: none;
     padding: 0 14px;
-    min-height: 44px;
+    min-height: 42px;
     font-family: var(--ui); font-size: 10px; letter-spacing: 1.5px;
     text-transform: uppercase; cursor: pointer;
     transition: background .12s, color .12s;
@@ -111,7 +99,7 @@
     border: 1px solid var(--line);
     border-radius: 3px;
     padding: 0 13px;
-    min-height: 44px;
+    min-height: 42px;
     font-family: var(--ui); font-size: 10px; letter-spacing: 1.5px;
     text-transform: uppercase; cursor: pointer;
     transition: background .12s, color .12s, border-color .12s;
@@ -119,6 +107,23 @@
   .iconbtn:hover { color: var(--paper); border-color: var(--steel-dim); }
   .iconbtn.on { background: var(--amber); color: #1a1400; border-color: var(--amber); font-weight: 600; }
   .iconbtn:focus-visible { outline: 2px solid var(--amber); outline-offset: 2px; }
+
+  .topbar .iconbtn, .topbar .seg-ctl button {
+    min-height: 36px;
+    font-size: 9px;
+    padding: 0 11px;
+  }
+
+  #topToggle .chev { display: block; transition: transform .2s; font-size: 11px; }
+  body:not(.top-open) .topbar {
+    position: absolute; top: 0; right: 0; z-index: 6;
+    background: none; border-bottom: none;
+    padding: max(4px, env(safe-area-inset-top)) 8px 4px;
+  }
+  body:not(.top-open) .topbar > *:not(#topToggle) { display: none; }
+  body:not(.top-open) #topToggle { min-height: 26px; padding: 0 9px; opacity: .6; }
+  body:not(.top-open) #topToggle:hover { opacity: 1; }
+  body:not(.top-open) #topToggle .chev { transform: rotate(180deg); }
 
   /* ---------- prompt stage ---------- */
   .stage {
@@ -159,7 +164,7 @@
   }
 
   .stage[data-axis="y"] .readline {
-    top: 42%; left: 0; right: 0; height: 0;
+    top: 50%; left: 0; right: 0; height: 0;
     border-top: 2px solid var(--readline);
     opacity: .5;
   }
@@ -189,7 +194,7 @@
   .track {
     position: absolute;
     z-index: 1;
-    font-family: var(--disp);
+    font-family: var(--sans);
     font-weight: 500;
     color: var(--amber);
     will-change: transform;
@@ -232,8 +237,8 @@
 
   /* ---------- transport ---------- */
   .controls {
-    display: flex; align-items: center; gap: 16px;
-    padding: 12px 16px;
+    display: flex; align-items: center; gap: 14px;
+    padding: 10px 14px;
     background: var(--panel);
     border-top: 1px solid var(--line);
     flex-shrink: 0; flex-wrap: wrap;
@@ -243,7 +248,7 @@
     display: flex; align-items: center; gap: 11px;
     background: var(--green); color: #062611;
     border: none; border-radius: 4px;
-    padding: 0 24px; min-height: 52px; min-width: 142px;
+    padding: 0 24px; min-height: 49px; min-width: 136px;
     font-family: var(--disp); font-weight: 700; font-size: 14px; letter-spacing: 2px;
     cursor: pointer; justify-content: center;
     transition: filter .12s, background .12s;
@@ -268,7 +273,7 @@
     color: var(--steel);
     border: 1px solid var(--line);
     border-radius: 3px;
-    min-width: 44px; min-height: 44px;
+    min-width: 42px; min-height: 42px;
     font-family: var(--ui); font-size: 18px; line-height: 1;
     cursor: pointer;
     transition: background .12s, color .12s;
@@ -280,7 +285,7 @@
   input[type=range] {
     -webkit-appearance: none; appearance: none;
     background: transparent;
-    width: 150px; height: 44px; cursor: pointer;
+    width: 150px; height: 42px; cursor: pointer;
   }
   input[type=range]::-webkit-slider-runnable-track {
     height: 6px; background: var(--line); border-radius: 3px;
@@ -302,7 +307,7 @@
 
   .swatches { display: flex; gap: 6px; }
   .swatch {
-    width: 44px; height: 44px; border-radius: 50%;
+    width: 42px; height: 42px; border-radius: 50%;
     border: none; background: none; cursor: pointer; padding: 0;
     display: flex; align-items: center; justify-content: center;
   }
@@ -316,25 +321,38 @@
   .swatch:focus-visible { outline: 2px solid var(--amber); outline-offset: -4px; border-radius: 4px; }
 
   /* ---------- script drawer ---------- */
-  .editor { background: var(--console); border-top: 1px solid var(--line); flex-shrink: 0; }
-  .editor-head {
-    display: flex; align-items: center; gap: 12px;
-    padding: 0 16px; min-height: 44px;
-    cursor: pointer; user-select: none; -webkit-user-select: none;
+  .editor {
+    background: var(--console); border-top: 1px solid var(--line); flex-shrink: 0;
+    padding-bottom: max(0px, env(safe-area-inset-bottom));
   }
-  .editor-head .lbl { font-size: 9px; letter-spacing: 2px; text-transform: uppercase; color: var(--steel-dim); }
-  .editor-head .chev { color: var(--steel-dim); transition: transform .2s; font-size: 11px; }
-  body.editor-open .editor-head .chev { transform: rotate(180deg); }
+  .editor-head {
+    display: flex; align-items: center; gap: 8px;
+    padding: 0 12px; min-height: 38px;
+  }
+  body.tabs-open .editor-head, body.edit-open .editor-head { border-top: 1px solid var(--line); }
+  .drawer-toggle {
+    display: flex; align-items: center; gap: 8px;
+    background: none; border: none; cursor: pointer;
+    padding: 0 8px; min-height: 32px;
+    font-family: var(--ui);
+  }
+  .drawer-toggle .lbl { font-size: 9px; letter-spacing: 2px; text-transform: uppercase; color: var(--steel-dim); }
+  .drawer-toggle .chev { color: var(--steel-dim); transition: transform .2s; font-size: 11px; }
+  .drawer-toggle.open .chev { transform: rotate(180deg); }
+  .drawer-toggle:hover .lbl, .drawer-toggle:hover .chev { color: var(--steel); }
+  .drawer-toggle:focus-visible { outline: 2px solid var(--amber); outline-offset: 2px; }
   .editor-head .count {
     margin-left: auto; font-size: 10px; color: var(--steel-dim); letter-spacing: 1px;
     font-variant-numeric: tabular-nums;
+    padding-right: 4px;
   }
 
-  .editor-body { display: none; }
-  body.editor-open .editor-body { display: block; }
+  body.tabs-open .tabrow { display: flex; }
+  .edit-body { display: none; }
+  body.edit-open .edit-body { display: block; }
 
   .tabrow {
-    display: flex; align-items: center; gap: 8px;
+    display: none; align-items: center; gap: 8px;
     padding: 6px 16px 8px;
   }
   .tabbar {
@@ -381,22 +399,15 @@
   .tabtool:focus-visible { outline: 2px solid var(--amber); outline-offset: 2px; }
 
   textarea {
-    width: 100%; height: 118px;
+    width: 100%; height: 140px;
     background: var(--console); color: var(--text);
-    border: none; border-top: 1px solid var(--line);
+    border: none;
     padding: 14px 16px;
-    font-family: var(--disp); font-size: 16px; line-height: 1.6;
+    font-family: var(--sans); font-size: 16px; line-height: 1.6;
     resize: none; outline: none;
     white-space: pre-wrap;
   }
   textarea::placeholder { color: var(--steel-dim); }
-
-  .tip {
-    padding: 8px 16px;
-    padding-bottom: max(12px, env(safe-area-inset-bottom));
-    font-size: 10px; letter-spacing: .5px; color: var(--steel-dim);
-    line-height: 1.7;
-  }
 
   .stage:fullscreen { background: #000; }
   .stage:-webkit-full-screen { background: #000; }
@@ -408,14 +419,14 @@
   }
 </style>
 </head>
-<body class="editor-open">
+<body class="tabs-open edit-open top-open">
 
   <div class="topbar">
     <div class="brand">
       <span class="name">JuScript</span>
       <span class="kind">Teleprompter</span>
     </div>
-    <div class="tally"><span class="dot"></span><span id="tallyLabel">Standby</span></div>
+    <span class="ver">v1.5</span>
     <div class="spacer"></div>
 
     <div class="seg-ctl" role="group" aria-label="Scroll direction">
@@ -426,6 +437,7 @@
     <button class="iconbtn" id="flipH" title="Mirror left-right for beam-splitter glass">Flip H</button>
     <button class="iconbtn" id="flipV" title="Mirror top-bottom for beam-splitter glass">Flip V</button>
     <button class="iconbtn" id="fsBtn" title="Fill the screen with the prompt">Fullscreen</button>
+    <button class="iconbtn" id="topToggle" aria-expanded="true" title="Show or hide the top controls"><span class="chev">▲</span></button>
   </div>
 
   <div class="stage" id="stage" data-axis="x">
@@ -442,7 +454,7 @@
     <div class="group">
       <label>Speed · WPM</label>
       <button class="step" id="speedDown" aria-label="Decrease words per minute">−</button>
-      <input type="range" id="speed" min="60" max="280" value="145" step="5" aria-label="Speaking pace in words per minute">
+      <input type="range" id="speed" min="60" max="400" value="145" step="5" aria-label="Speaking pace in words per minute">
       <button class="step" id="speedUp" aria-label="Increase words per minute">+</button>
       <span class="readout" id="speedOut">145</span>
     </div>
@@ -466,9 +478,9 @@
     <div class="group">
       <label>Color</label>
       <div class="swatches" id="swatches">
-        <button class="swatch on" style="color:#ffb038" data-color="#ffb038" title="Amber"><i></i></button>
-        <button class="swatch" style="color:#4ade80" data-color="#4ade80" title="Green"><i></i></button>
-        <button class="swatch" style="color:#f4f2ec" data-color="#f4f2ec" title="White"><i></i></button>
+        <button class="swatch on" style="color:#ffffff" data-color="#ffffff" title="White"><i></i></button>
+        <button class="swatch" style="color:#60ff00" data-color="#60ff00" title="Green"><i></i></button>
+        <button class="swatch" style="color:#ff00bf" data-color="#ff00bf" title="Magenta"><i></i></button>
       </div>
     </div>
 
@@ -482,25 +494,20 @@
   </div>
 
   <div class="editor" id="editor">
-    <div class="editor-head" id="editorHead">
-      <span class="lbl">Scripts</span>
-      <span class="chev">▲</span>
-      <span class="count" id="count">0 words</span>
+    <div class="edit-body">
+      <textarea id="script" spellcheck="false" placeholder="Paste your script here. Line breaks and extra spaces are kept — in Upward mode they break the line, in Sideways mode they open a gap."></textarea>
     </div>
-    <div class="editor-body">
-      <div class="tabrow">
+    <div class="tabrow">
         <div class="tabbar" id="tabbar"></div>
         <button class="tabtool" id="newTab" title="New script" aria-label="New script">＋</button>
         <button class="tabtool" id="importBtn" title="Import scripts from a backup file">Import</button>
         <button class="tabtool" id="exportBtn" title="Save all scripts to a backup file">Export</button>
         <input type="file" id="fileIn" accept=".json,application/json" hidden>
-      </div>
-      <textarea id="script" spellcheck="false" placeholder="Paste your script here. Line breaks and extra spaces are kept — in Upward mode they break the line, in Sideways mode they open a gap."></textarea>
-      <div class="tip">
-        Drag the stage to move through the script; while paused, tap any word to snap it to the reading line. Tap the stage while rolling to pause. Tap the active tab to rename it.
-        Pacing at 0% scrolls at one constant speed; at 100% it follows natural speech timing — syllables, numbers, and punctuation pauses.
-        Export saves all scripts to a file — do this after big changes; the browser can clear its own storage.
-      </div>
+    </div>
+    <div class="editor-head">
+      <button class="drawer-toggle open" id="tabsToggle" aria-expanded="true"><span class="lbl">Scripts</span><span class="chev">▲</span></button>
+      <button class="drawer-toggle open" id="editToggle" aria-expanded="true"><span class="lbl">Editor</span><span class="chev">▲</span></button>
+      <span class="count" id="count">0 words</span>
     </div>
   </div>
 
@@ -520,7 +527,6 @@
   const paceOut     = document.getElementById('paceOut');
   const sizeEl      = document.getElementById('size');
   const sizeOut     = document.getElementById('sizeOut');
-  const tallyLabel  = document.getElementById('tallyLabel');
   const countEl     = document.getElementById('count');
   const axisXBtn    = document.getElementById('axisX');
   const axisYBtn    = document.getElementById('axisY');
@@ -536,6 +542,7 @@
   const fileIn      = document.getElementById('fileIn');
 
   const KEY = 'juscript:v1';
+  const PALETTE = ['#ffffff', '#60ff00', '#ff00bf'];
   const WELCOME = 'Welcome to JuScript. Paste a script here, or press + above to add another. Drag the stage to move through the script, or tap a word to snap it to the reading line.';
 
   let running = false;
@@ -771,8 +778,9 @@
         y: { size: 64 },
         wpm: 145,
         pacing: 25,
-        color: '#ffb038',
+        color: '#ffffff',
         font: 'sans',
+        ui: { tabs: true, edit: true, top: true },
         flipH: false,
         flipV: false
       }
@@ -793,6 +801,9 @@
       if (!s.settings.y) s.settings.y = { size: 64 };
       delete s.settings.x.speed;
       delete s.settings.y.speed;
+      if (!s.settings.ui) s.settings.ui = { tabs: true, edit: true, top: true };
+      if (typeof s.settings.ui.top !== 'boolean') s.settings.ui.top = true;
+      if (PALETTE.indexOf(s.settings.color) === -1) s.settings.color = '#ffffff';
       return s;
     } catch (e) { return null; }
   }
@@ -837,6 +848,7 @@
   }
 
   function render() {
+    stopMomentum();
     const raw = scriptEl.value;
     placeholder.style.display = raw.trim().length ? 'none' : 'flex';
     track.textContent = '';
@@ -881,7 +893,7 @@
 
     const toks = tokenize(scriptEl.value);
     const n = Math.min(toks.length, words.length);
-    const C = (axis === 'x') ? stage.clientWidth * 0.5 : stage.clientHeight * 0.42;
+    const C = (axis === 'x') ? stage.clientWidth * 0.5 : stage.clientHeight * 0.5;
 
     const items = [];
     for (let i = 0; i < n; i++) {
@@ -992,15 +1004,17 @@
   }
 
   function play() {
+    stopMomentum();
     if (!scriptEl.value.trim()) {
-      document.body.classList.add('editor-open');
+      store.settings.ui.edit = true;
+      applyDrawers();
+      save();
       scriptEl.focus();
       return;
     }
     running = true;
     lastTs = null;
     document.body.classList.add('live');
-    tallyLabel.textContent = 'On Air';
     playIcon.textContent = '\u275a\u275a';
     playLabel.textContent = 'PAUSE';
     measure();
@@ -1011,7 +1025,6 @@
   function stop() {
     running = false;
     document.body.classList.remove('live');
-    tallyLabel.textContent = 'Standby';
     playIcon.textContent = '\u25b6';
     playLabel.textContent = 'PLAY';
     letSleep();
@@ -1021,7 +1034,7 @@
 
   function toggle() { running ? stop() : play(); }
 
-  function reset() { stop(); pos = 0; tCur = 0; saveCurrentPos(); applyTransform(); save(); }
+  function reset() { stopMomentum(); stop(); pos = 0; tCur = 0; saveCurrentPos(); applyTransform(); save(); }
 
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'hidden') {
@@ -1032,17 +1045,58 @@
   });
   window.addEventListener('pagehide', () => { saveCurrentPos(); save(); });
 
-  /* ---------- scrub / tap to jump / tap to pause ---------- */
+  /* ---------- scrub / fling / tap ---------- */
 
   let scrub = null;         // active drag gesture
-  let suppressTap = false;  // eat the click generated by a drag or a pause-tap
+  let suppressTap = false;  // eat the click generated by a drag, a pause-tap, or a glide-catch
+  let momentum = null;      // active fling animation
+
+  function stopMomentum() {
+    if (momentum) { cancelAnimationFrame(momentum.raf); momentum = null; }
+  }
+
+  function settleScrub() {
+    tCur = invertPos(pos);
+    saveCurrentPos();
+    save();
+  }
+
+  function startMomentum(v) {
+    if (Math.abs(v) < 60) { settleScrub(); return; }
+    momentum = { v: Math.max(-9000, Math.min(9000, v)), last: performance.now(), raf: 0 };
+    const step = (now) => {
+      if (!momentum) return;
+      const dt = Math.min((now - momentum.last) / 1000, 0.05);
+      momentum.last = now;
+      pos += momentum.v * dt;
+      const clamped = Math.max(-travel, Math.min(0, pos));
+      const hitEdge = clamped !== pos;
+      pos = clamped;
+      applyTransform();
+      momentum.v *= Math.pow(0.998, dt * 1000);   // iOS-style deceleration
+      if (hitEdge || Math.abs(momentum.v) < 15) {
+        momentum = null;
+        settleScrub();
+        return;
+      }
+      momentum.raf = requestAnimationFrame(step);
+    };
+    momentum.raf = requestAnimationFrame(step);
+  }
 
   stage.addEventListener('pointerdown', (e) => {
     suppressTap = false;
     if (scrub || !scriptEl.value.trim()) return;
+    const hadMomentum = !!momentum;
+    stopMomentum();
     const wasRunning = running;
     if (running) stop();                    // grabbing the stage pauses it
-    scrub = { id: e.pointerId, x: e.clientX, y: e.clientY, startPos: pos, moved: false, wasRunning: wasRunning };
+    scrub = {
+      id: e.pointerId, x: e.clientX, y: e.clientY,
+      startPos: pos, moved: false,
+      wasRunning: wasRunning, hadMomentum: hadMomentum,
+      samples: [{ t: e.timeStamp, p: pos }]
+    };
   });
 
   stage.addEventListener('pointermove', (e) => {
@@ -1061,6 +1115,8 @@
     const d = ((axis === 'x') ? dx : dy) * (flipped ? -1 : 1);
     pos = Math.max(-travel, Math.min(0, scrub.startPos + d));
     applyTransform();
+    scrub.samples.push({ t: e.timeStamp, p: pos });
+    while (scrub.samples.length > 2 && e.timeStamp - scrub.samples[0].t > 120) scrub.samples.shift();
   });
 
   function endScrub(e) {
@@ -1069,12 +1125,15 @@
     scrub = null;
     stage.classList.remove('scrubbing');
     if (s.moved) {
-      tCur = invertPos(pos);
-      saveCurrentPos();
-      save();
       suppressTap = true;
-    } else if (s.wasRunning) {
-      suppressTap = true;                   // a plain tap that paused: no jump
+      const first = s.samples[0];
+      const last = s.samples[s.samples.length - 1];
+      const span = (last.t - first.t) / 1000;
+      const v = (span > 0.02) ? (last.p - first.p) / span : 0;
+      startMomentum(v);                     // settles in place when the hand wasn't moving
+    } else if (s.wasRunning || s.hadMomentum) {
+      suppressTap = true;                   // that tap paused playback or caught a glide
+      settleScrub();
     }
   }
   window.addEventListener('pointerup', endScrub);
@@ -1083,6 +1142,7 @@
   stage.addEventListener('click', (e) => {
     if (suppressTap) { suppressTap = false; return; }
     if (running) { toggle(); return; }
+    if (document.fullscreenElement || document.webkitFullscreenElement) { play(); return; }
     const w = e.target.closest('.w');
     if (!w || !track.contains(w)) return;
     const wi = +w.dataset.wi;
@@ -1092,7 +1152,7 @@
     } else {
       const target = (axis === 'x')
         ? stage.clientWidth * 0.5 - w.offsetLeft
-        : stage.clientHeight * 0.42 - w.offsetTop;
+        : stage.clientHeight * 0.5 - w.offsetTop;
       pos = Math.max(-travel, Math.min(0, target));
       tCur = invertPos(pos);
     }
@@ -1210,7 +1270,9 @@
     loadActive();
     renderTabs();
     save();
-    document.body.classList.add('editor-open');
+    store.settings.ui.edit = true;
+    applyDrawers();
+    save();
     scriptEl.focus();
   }
 
@@ -1398,8 +1460,39 @@
     b.blur();
   });
 
-  document.getElementById('editorHead').addEventListener('click', () => {
-    document.body.classList.toggle('editor-open');
+  const tabsToggle = document.getElementById('tabsToggle');
+  const editToggle = document.getElementById('editToggle');
+  const topToggle  = document.getElementById('topToggle');
+
+  function applyDrawers() {
+    const ui = store.settings.ui;
+    document.body.classList.toggle('tabs-open', !!ui.tabs);
+    document.body.classList.toggle('edit-open', !!ui.edit);
+    document.body.classList.toggle('top-open', !!ui.top);
+    tabsToggle.classList.toggle('open', !!ui.tabs);
+    editToggle.classList.toggle('open', !!ui.edit);
+    tabsToggle.setAttribute('aria-expanded', !!ui.tabs);
+    editToggle.setAttribute('aria-expanded', !!ui.edit);
+    topToggle.setAttribute('aria-expanded', !!ui.top);
+  }
+
+  wire(topToggle, () => {
+    store.settings.ui.top = !store.settings.ui.top;
+    applyDrawers();
+    save();
+    requestAnimationFrame(measure);
+  });
+
+  wire(tabsToggle, () => {
+    store.settings.ui.tabs = !store.settings.ui.tabs;
+    applyDrawers();
+    save();
+    requestAnimationFrame(measure);
+  });
+  wire(editToggle, () => {
+    store.settings.ui.edit = !store.settings.ui.edit;
+    applyDrawers();
+    save();
     requestAnimationFrame(measure);
   });
 
@@ -1433,10 +1526,12 @@
   sizeOut.textContent  = sizeEl.value;
   track.style.fontSize = sizeEl.value + 'px';
 
-  track.style.color = store.settings.color || '#ffb038';
+  track.style.color = store.settings.color || '#ffffff';
   document.querySelectorAll('.swatch').forEach(s =>
-    s.classList.toggle('on', s.dataset.color === (store.settings.color || '#ffb038'))
+    s.classList.toggle('on', s.dataset.color === (store.settings.color || '#ffffff'))
   );
+
+  applyDrawers();
 
   (function setFontInit() {
     const f = store.settings.font === 'serif' ? 'serif' : 'sans';
