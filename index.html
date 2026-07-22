@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- JuScript v2.1 -->
+<!-- JuScript v2.2 -->
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -8,7 +8,7 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="JuScript">
-<title>JuScript v2.1 — Teleprompter</title>
+<title>JuScript v2.2 — Teleprompter</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600&family=Source+Serif+4:wght@500;600&family=Space+Grotesk:wght@700&display=swap" rel="stylesheet">
@@ -429,7 +429,7 @@
   #linkBtn .code { letter-spacing: 2px; font-weight: 600; }
 
   .remote-only { display: none !important; }
-  body.remote .remote-only { display: flex !important; }
+  body.remote .remote-only { display: flex !important; align-items: center; justify-content: center; }
   body.remote #editor,
   body.remote #flipH,
   body.remote #flipV,
@@ -475,12 +475,12 @@
   .sheet-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 
   /* remote runs a tighter transport bar; 40px is the floor for touch targets */
-  body.remote .controls { gap: 11px; padding: 8px 12px; }
-  body.remote .controls .step { min-width: 40px; min-height: 40px; font-size: 16px; }
-  body.remote .controls input[type=range] { width: 135px; height: 40px; }
-  body.remote .controls .readout { font-size: 11px; min-width: 36px; }
-  body.remote .controls .group > label { font-size: 8px; letter-spacing: 1.8px; }
-  body.remote .play { min-height: 46px; min-width: 122px; font-size: 13px; padding: 0 20px; }
+  body.remote .controls { gap: 12px; padding: 9px 13px; }
+  body.remote .controls .step { min-width: 43px; min-height: 43px; font-size: 17px; }
+  body.remote .controls input[type=range] { width: 144px; height: 43px; }
+  body.remote .controls .readout { font-size: 12px; min-width: 38px; }
+  body.remote .controls .group > label { font-size: 8.5px; letter-spacing: 1.9px; }
+  body.remote .play { min-height: 49px; min-width: 131px; font-size: 14px; padding: 0 22px; }
 
   /* prompter chrome the assistant can collapse remotely */
   body.clean .controls, body.clean .editor { display: none !important; }
@@ -506,7 +506,7 @@
     .brand .kind { display: none; }
     .controls { gap: 12px; }
     input[type=range] { width: 116px; }
-    body.remote .controls input[type=range] { width: 104px; }
+    body.remote .controls input[type=range] { width: 111px; }
   }
 </style>
 </head>
@@ -517,7 +517,7 @@
       <span class="name">JuScript</span>
       <span class="kind">Teleprompter</span>
     </div>
-    <span class="ver">v2.1</span>
+    <span class="ver">v2.2</span>
     <div class="spacer"></div>
 
     <div class="seg-ctl prompter-only" role="group" aria-label="Scroll direction">
@@ -977,6 +977,9 @@
     return c;
   }
 
+  let promptW  = 0;   // the prompter's stage width, so we can match its wrapping
+  let mirrorPx = 0;   // the font size actually applied on this remote
+
   const link = { ws: null, ok: false, peers: 0, tries: 0, timer: null,
                  lastSent: 0, lastKey: '', lastWpm: 0, lastSize: 0, want: false };
   let docTimer = null;
@@ -1038,6 +1041,27 @@
 
   /* --- prompter side --- */
 
+  // The text column is the same fraction of the stage on both devices, so
+  // scaling the prompter's text size by the ratio of stage widths reproduces
+  // its line breaks exactly, at a size that suits this screen.
+  // Width of the actual text column, mirroring the CSS (84% of the stage in
+  // upward mode, capped at 1100px). Both devices apply the same rule.
+  function colW(sw) { return (axis === 'y') ? Math.min(sw * 0.84, 1100) : sw; }
+
+  function mirrorFontPx() {
+    if (!isRemote || !promptW || !stage.clientWidth) return +sizeEl.value;
+    const k = colW(stage.clientWidth) / colW(promptW);
+    return Math.max(8, Math.round(+sizeEl.value * k * 10) / 10);
+  }
+
+  function applyTrackSize() {
+    const px = mirrorFontPx();
+    if (isRemote && Math.abs(px - mirrorPx) < 0.3) return false;
+    mirrorPx = px;
+    track.style.fontSize = px + 'px';
+    return true;
+  }
+
   function readLineC() {
     return (axis === 'x') ? stage.clientWidth * 0.5 : stage.clientHeight * 0.5;
   }
@@ -1085,7 +1109,7 @@
     link.lastSent = now;
     link.lastKey = key;
     linkSend({ t: 'state', wf: wf, running: running,
-               wpm: +speedEl.value, size: +sizeEl.value,
+               wpm: +speedEl.value, size: +sizeEl.value, sw: stage.clientWidth,
                clean: document.body.classList.contains('clean'),
                el: tCur, tot: TTotal });
   }
@@ -1193,14 +1217,13 @@
       speedEl.value = m.wpm;
       speedOut.textContent = m.wpm;
     }
+    if (+m.sw) promptW = +m.sw;
     if (m.size != null && +m.size !== +sizeEl.value &&
         performance.now() - link.lastSize > 900) {
       sizeEl.value = m.size;
       sizeOut.textContent = m.size;
-      track.style.fontSize = m.size + 'px';
-      rBuf = [];
-      measure();                       // layout changed, so word offsets did too
     }
+    if (applyTrackSize()) { rBuf = []; measure(); }   // wrapping changed
     const fsR = document.getElementById('fsRemote');
     if (fsR) fsR.classList.toggle('on', !!m.clean);
     const off = offsetFor(+m.wf || 0);
@@ -1656,7 +1679,7 @@
 
     sizeEl.value = store.settings[axis].size;
     sizeOut.textContent = sizeEl.value;
-    track.style.fontSize = sizeEl.value + 'px';
+    applyTrackSize();
 
     axisXBtn.classList.toggle('on', axis === 'x');
     axisYBtn.classList.toggle('on', axis === 'y');
@@ -1891,7 +1914,7 @@
   }
   function afterSize() {
     sizeOut.textContent = sizeEl.value;
-    track.style.fontSize = sizeEl.value + 'px';
+    applyTrackSize();
     measure();
     updateCount();
   }
@@ -2010,7 +2033,11 @@
   let rt;
   window.addEventListener('resize', () => {
     clearTimeout(rt);
-    rt = setTimeout(() => { measure(); updateCount(); }, 120);
+    rt = setTimeout(() => {
+      if (isRemote && applyTrackSize()) rBuf = [];
+      measure();
+      updateCount();
+    }, 120);
   });
 
   /* ---------- pairing sheet ---------- */
@@ -2109,7 +2136,7 @@
   speedOut.textContent = speedEl.value;
   paceOut.textContent  = paceEl.value + '%';
   sizeOut.textContent  = sizeEl.value;
-  track.style.fontSize = sizeEl.value + 'px';
+  applyTrackSize();
 
   track.style.color = store.settings.color || '#ffffff';
   document.querySelectorAll('.swatch').forEach(s =>
