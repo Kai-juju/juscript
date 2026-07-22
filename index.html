@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- JuScript v2.0 -->
+<!-- JuScript v2.1 -->
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -8,7 +8,7 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="JuScript">
-<title>JuScript v2.0 — Teleprompter</title>
+<title>JuScript v2.1 — Teleprompter</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600&family=Source+Serif+4:wght@500;600&family=Space+Grotesk:wght@700&display=swap" rel="stylesheet">
@@ -139,9 +139,12 @@
   }
   body:not(.live) .stage { cursor: grab; }
   .stage.scrubbing, .stage.scrubbing .w { cursor: grabbing; }
-  .stage.flip-h { transform: scaleX(-1); }
-  .stage.flip-v { transform: scaleY(-1); }
-  .stage.flip-h.flip-v { transform: scale(-1, -1); }
+  /* The fullscreen element is forced to transform:none by the browser, so the
+     mirroring has to sit on a layer inside the stage rather than on the stage. */
+  .flipper { position: absolute; inset: 0; }
+  .stage.flip-h .flipper { transform: scaleX(-1); }
+  .stage.flip-v .flipper { transform: scaleY(-1); }
+  .stage.flip-h.flip-v .flipper { transform: scale(-1, -1); }
 
   .readline { position: absolute; pointer-events: none; z-index: 3; }
   .readline::before, .readline::after { content: ""; position: absolute; width: 0; height: 0; }
@@ -470,6 +473,17 @@
     padding: 10px 12px; margin-bottom: 14px; word-break: break-all;
   }
   .sheet-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+
+  /* remote runs a tighter transport bar; 40px is the floor for touch targets */
+  body.remote .controls { gap: 11px; padding: 8px 12px; }
+  body.remote .controls .step { min-width: 40px; min-height: 40px; font-size: 16px; }
+  body.remote .controls input[type=range] { width: 135px; height: 40px; }
+  body.remote .controls .readout { font-size: 11px; min-width: 36px; }
+  body.remote .controls .group > label { font-size: 8px; letter-spacing: 1.8px; }
+  body.remote .play { min-height: 46px; min-width: 122px; font-size: 13px; padding: 0 20px; }
+
+  /* prompter chrome the assistant can collapse remotely */
+  body.clean .controls, body.clean .editor { display: none !important; }
   .sheet-link {
     font-size: 12px; line-height: 1.7; color: var(--amber);
     background: var(--console); border: 1px solid var(--line); border-radius: 3px;
@@ -492,6 +506,7 @@
     .brand .kind { display: none; }
     .controls { gap: 12px; }
     input[type=range] { width: 116px; }
+    body.remote .controls input[type=range] { width: 104px; }
   }
 </style>
 </head>
@@ -502,7 +517,7 @@
       <span class="name">JuScript</span>
       <span class="kind">Teleprompter</span>
     </div>
-    <span class="ver">v2.0</span>
+    <span class="ver">v2.1</span>
     <div class="spacer"></div>
 
     <div class="seg-ctl prompter-only" role="group" aria-label="Scroll direction">
@@ -513,25 +528,24 @@
     <button class="iconbtn" id="flipH" title="Mirror left-right for beam-splitter glass">Flip H</button>
     <button class="iconbtn" id="flipV" title="Mirror top-bottom for beam-splitter glass">Flip V</button>
     <button class="iconbtn" id="linkBtn" title="Pair a remote"><span class="pip" id="linkPip"></span><span class="code" id="linkLabel">----</span></button>
-    <button class="iconbtn" id="fsBtn" title="Fill the screen with the prompt">Fullscreen</button>
+    <button class="iconbtn prompter-only" id="fsBtn" title="Fill the screen with the prompt">Fullscreen</button>
     <button class="iconbtn" id="topToggle" aria-expanded="true" title="Show or hide the top controls"><span class="chev">▲</span></button>
   </div>
 
   <div class="stage" id="stage" data-axis="x">
-    <div class="vignette"></div>
-    <div class="readline"></div>
-    <div class="placeholder" id="placeholder">Type or paste your script below, then press Play</div>
-    <div class="track" id="track"></div>
+    <div class="flipper">
+      <div class="vignette"></div>
+      <div class="readline"></div>
+      <div class="placeholder" id="placeholder">Type or paste your script below, then press Play</div>
+      <div class="track" id="track"></div>
+    </div>
   </div>
 
   <div class="controls">
     <button class="play" id="playBtn"><span id="playIcon">▶</span><span id="playLabel">PLAY</span></button>
     <button class="iconbtn" id="resetBtn" title="Return to the start">Reset</button>
 
-    <div class="group remote-only">
-      <label>Position</label>
-      <span class="readout" id="remoteTime" style="min-width:86px">0:00 / 0:00</span>
-    </div>
+    <button class="iconbtn remote-only" id="fsRemote" title="Fill the prompter's screen">Fullscreen</button>
 
     <div class="group">
       <label>Speed · WPM</label>
@@ -544,9 +558,9 @@
     <div class="group prompter-only">
       <label>Pacing</label>
       <button class="step" id="paceDown" aria-label="Decrease speech pacing">−</button>
-      <input type="range" id="pace" min="0" max="100" value="25" step="5" aria-label="Speech pacing amount">
+      <input type="range" id="pace" min="0" max="100" value="0" step="5" aria-label="Speech pacing amount">
       <button class="step" id="paceUp" aria-label="Increase speech pacing">+</button>
-      <span class="readout" id="paceOut">25%</span>
+      <span class="readout" id="paceOut">0%</span>
     </div>
 
     <div class="group">
@@ -893,7 +907,7 @@
         x: { size: 130 },
         y: { size: 64 },
         wpm: 145,
-        pacing: 25,
+        pacing: 0,
         color: '#ffffff',
         font: 'sans',
         ui: { tabs: true, edit: true, top: true },
@@ -913,7 +927,9 @@
       if (!s.scripts.some(sc => sc.id === s.activeId)) s.activeId = s.scripts[0].id;
       // migrate from the px-per-second build
       if (typeof s.settings.wpm !== 'number') s.settings.wpm = 145;
-      if (typeof s.settings.pacing !== 'number') s.settings.pacing = 25;
+      if (typeof s.settings.pacing !== 'number') s.settings.pacing = 0;
+      // v2.1 — one-time reset of pacing to off; change it freely afterwards
+      if (!s.settings.pacingReset) { s.settings.pacing = 0; s.settings.pacingReset = true; }
       if (!s.settings.x) s.settings.x = { size: 130 };
       if (!s.settings.y) s.settings.y = { size: 64 };
       delete s.settings.x.speed;
@@ -962,7 +978,7 @@
   }
 
   const link = { ws: null, ok: false, peers: 0, tries: 0, timer: null,
-                 lastSent: 0, lastKey: '', lastWpm: 0, want: false };
+                 lastSent: 0, lastKey: '', lastWpm: 0, lastSize: 0, want: false };
   let docTimer = null;
 
   function linkStatus() {
@@ -1069,7 +1085,9 @@
     link.lastSent = now;
     link.lastKey = key;
     linkSend({ t: 'state', wf: wf, running: running,
-               wpm: +speedEl.value, el: tCur, tot: TTotal });
+               wpm: +speedEl.value, size: +sizeEl.value,
+               clean: document.body.classList.contains('clean'),
+               el: tCur, tot: TTotal });
   }
 
   function applyCmd(m) {
@@ -1083,6 +1101,19 @@
       case 'wpm':
         bump(speedEl, +m.d || 0, afterSpeed);
         break;
+      case 'sizeset':
+        sizeEl.value = Math.max(+sizeEl.min, Math.min(+sizeEl.max, +m.v || 64));
+        afterSize();
+        persistControls();
+        break;
+      case 'clean': {
+        const on = !document.body.classList.contains('clean');
+        document.body.classList.toggle('clean', on);
+        store.settings.ui.top = !on;
+        applyDrawers();
+        requestAnimationFrame(() => { measure(); sendState(true); });
+        break;
+      }
       case 'wpmset':
         speedEl.value = Math.max(+speedEl.min, Math.min(+speedEl.max, +m.v || 145));
         afterSpeed();
@@ -1162,8 +1193,16 @@
       speedEl.value = m.wpm;
       speedOut.textContent = m.wpm;
     }
-    const el = document.getElementById('remoteTime');
-    if (el) el.textContent = fmtT(m.el) + ' / ' + fmtT(m.tot);
+    if (m.size != null && +m.size !== +sizeEl.value &&
+        performance.now() - link.lastSize > 900) {
+      sizeEl.value = m.size;
+      sizeOut.textContent = m.size;
+      track.style.fontSize = m.size + 'px';
+      rBuf = [];
+      measure();                       // layout changed, so word offsets did too
+    }
+    const fsR = document.getElementById('fsRemote');
+    if (fsR) fsR.classList.toggle('on', !!m.clean);
     const off = offsetFor(+m.wf || 0);
     if (off != null && !rHeld()) {
       rBuf.push({ t: performance.now(), off: off });
@@ -1810,6 +1849,7 @@
     flipVBtn.classList.toggle('on', store.settings.flipV);
     save();
   });
+  wire(document.getElementById('fsRemote'), () => cmd('clean'));
   wire(fsBtn, () => {
     const inFs = document.fullscreenElement || document.webkitFullscreenElement;
     if (!inFs) {
@@ -1864,7 +1904,10 @@
   paceEl.addEventListener('input', afterPace);
   paceEl.addEventListener('change', () => { persistControls(); paceEl.blur(); });
   sizeEl.addEventListener('input', afterSize);
-  sizeEl.addEventListener('change', () => { persistControls(); sizeEl.blur(); });
+  sizeEl.addEventListener('change', () => {
+    if (isRemote) { link.lastSize = performance.now(); cmd('sizeset', { v: +sizeEl.value }); sizeEl.blur(); return; }
+    persistControls(); sizeEl.blur();
+  });
 
   function bump(input, delta, after) {
     input.value = Math.max(+input.min, Math.min(+input.max, +input.value + delta));
@@ -1897,8 +1940,12 @@
     isRemote ? (link.lastWpm = performance.now(), cmd('wpm', { d:  5 })) : bump(speedEl,  5, afterSpeed));
   holdable(document.getElementById('paceDown'),  () => bump(paceEl,  -5, afterPace));
   holdable(document.getElementById('paceUp'),    () => bump(paceEl,   5, afterPace));
-  holdable(document.getElementById('sizeDown'),  () => bump(sizeEl,  -2, afterSize));
-  holdable(document.getElementById('sizeUp'),    () => bump(sizeEl,   2, afterSize));
+  function bumpSize(d) {
+    bump(sizeEl, d, afterSize);
+    if (isRemote) { link.lastSize = performance.now(); cmd('sizeset', { v: +sizeEl.value }); }
+  }
+  holdable(document.getElementById('sizeDown'),  () => bumpSize(-2));
+  holdable(document.getElementById('sizeUp'),    () => bumpSize(2));
 
   document.getElementById('swatches').addEventListener('click', (e) => {
     const b = e.target.closest('.swatch');
@@ -1928,10 +1975,15 @@
   }
 
   wire(topToggle, () => {
-    store.settings.ui.top = !store.settings.ui.top;
+    if (document.body.classList.contains('clean')) {
+      document.body.classList.remove('clean');   // tapping the chevron exits clean mode
+      store.settings.ui.top = true;
+    } else {
+      store.settings.ui.top = !store.settings.ui.top;
+    }
     applyDrawers();
     save();
-    requestAnimationFrame(measure);
+    requestAnimationFrame(() => { measure(); sendState(true); });
   });
 
   wire(tabsToggle, () => {
