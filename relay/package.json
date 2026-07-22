@@ -1,0 +1,7 @@
+{
+  "name": "juscript-relay",
+  "private": true,
+  "devDependencies": {
+    "wrangler": "^4"
+  }
+}
