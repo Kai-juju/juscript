@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- JuScript v2.5 -->
+<!-- JuScript v2.6 -->
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -8,7 +8,7 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="JuScript">
-<title>JuScript v2.5 — Teleprompter</title>
+<title>JuScript v2.6 — Teleprompter</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600&family=Source+Serif+4:wght@500;600&family=Space+Grotesk:wght@700&display=swap" rel="stylesheet">
@@ -517,7 +517,7 @@
       <span class="name">JuScript</span>
       <span class="kind">Teleprompter</span>
     </div>
-    <span class="ver">v2.5</span>
+    <span class="ver">v2.6</span>
     <div class="spacer"></div>
 
     <div class="seg-ctl prompter-only" role="group" aria-label="Scroll direction">
@@ -1202,7 +1202,7 @@
   // Dead reckoning: the remote advances its own position every frame at the
   // speed the prompter reported, and treats arriving packets as corrections.
   // Starts instantly and stays smooth between packets.
-  let rWf = null, rVel = 0, rCorr = 0, rLast = 0, rRaf = 0, rRunning = false;
+  let rWf = null, rVel = 0, rCorr = 0, rSeen = 0, rLast = 0, rRaf = 0, rRunning = false;
 
   function fmtT(v) {
     v = Math.max(0, Math.round(v || 0));
@@ -1211,7 +1211,7 @@
 
   function applyDoc(m) {
     scriptEl.value = m.text || '';
-    rWf = null;
+    rWf = null; rCorr = 0; rSeen = 0;
     if (m.axis && m.axis !== axis) setAxis(m.axis);
     else render();
   }
@@ -1254,12 +1254,10 @@
     rVel = Math.max(0, +m.v || 0);
     if (!rHeld()) {
       const target = +m.wf || 0;
-      const d = target - rWf;
-      // snap on a jump, from a standstill, or on the first packet; otherwise
-      // queue the correction and bleed it in over the next few frames, so a
-      // packet never lands as a visible jolt
-      if (rWf === null || !rRunning || Math.abs(d) > 3) { rWf = target; rCorr = 0; }
-      else rCorr = d;
+      rSeen = target;
+      if (rWf === null || !rRunning) { rWf = target; rCorr = 0; }
+      else if (Math.abs(target - rWf) > 8) { rWf = target; rCorr = 0; }  // a real jump
+      else rCorr = target - rWf;                                         // bleed it in
     }
     startRemote();
   }
@@ -1269,9 +1267,15 @@
     const dt = (rLast && ts - rLast < 250) ? (ts - rLast) / 1000 : 0;
     rLast = ts;
     if (!rHeld() && rWf !== null && rowOff.length) {
-      if (rRunning) rWf += rVel * dt;
-      if (rCorr) { const k = Math.min(1, dt * 5); rWf += rCorr * k; rCorr -= rCorr * k; }
-      rWf = Math.max(0, Math.min(wordOff.length - 1, rWf));
+      let step = 0;
+      // predict forward, but never run more than about half a second past the
+      // last confirmed position, so a busy prompter can't strand us
+      if (rRunning && (rWf - rSeen) < Math.max(1, rVel * 0.5)) step += rVel * dt;
+      if (rCorr) { const k = Math.min(1, dt * 5); const c = rCorr * k; rCorr -= c; step += c; }
+      // while rolling the text must never travel backwards: a rearward
+      // correction becomes a brief stall and the prompter closes the gap
+      if (rRunning && step < 0) step = 0;
+      rWf = Math.max(0, Math.min(wordOff.length - 1, rWf + step));
       const off = offsetFor(rWf);
       if (off != null) {
         pos = Math.max(-travel, Math.min(0, readLineC() - off));
@@ -1294,6 +1298,7 @@
     const wf = currentWord();
     rWf = wf;
     rCorr = 0;
+    rSeen = wf;
     const now = performance.now();
     if (!force && now - rSeekAt < 90) return;
     rSeekAt = now;
@@ -1539,7 +1544,7 @@
     if (document.visibilityState === 'hidden') {
       saveCurrentPos(); save();
     } else if (isRemote) {
-      rWf = null;
+      rWf = null; rCorr = 0;
       keepAwake();
       startRemote();
     } else if (running) {
@@ -1661,7 +1666,7 @@
       const rw = e.target.closest('.w');
       if (rw && track.contains(rw)) {
         cmd('jump', { wi: +rw.dataset.wi });
-        rWf = +rw.dataset.wi; rCorr = 0; startRemote();
+        rWf = +rw.dataset.wi; rCorr = 0; rSeen = rWf; startRemote();
         rw.classList.remove('hit');
         void rw.offsetWidth;
         rw.classList.add('hit');
