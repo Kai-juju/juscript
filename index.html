@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- JuScript v2.2 -->
+<!-- JuScript v2.3 -->
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -8,7 +8,7 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="JuScript">
-<title>JuScript v2.2 — Teleprompter</title>
+<title>JuScript v2.3 — Teleprompter</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600&family=Source+Serif+4:wght@500;600&family=Space+Grotesk:wght@700&display=swap" rel="stylesheet">
@@ -517,7 +517,7 @@
       <span class="name">JuScript</span>
       <span class="kind">Teleprompter</span>
     </div>
-    <span class="ver">v2.2</span>
+    <span class="ver">v2.3</span>
     <div class="spacer"></div>
 
     <div class="seg-ctl prompter-only" role="group" aria-label="Scroll direction">
@@ -1114,6 +1114,12 @@
                el: tCur, tot: TTotal });
   }
 
+  let saveTimer = null;
+  function saveSoon() {
+    if (saveTimer) return;
+    saveTimer = setTimeout(() => { saveTimer = null; save(); }, 700);
+  }
+
   function applyCmd(m) {
     switch (m.c) {
       case 'toggle':
@@ -1168,7 +1174,7 @@
         break;
     }
     sendState(true);
-    save();
+    saveSoon();
   }
 
   /* --- remote side --- */
@@ -1328,6 +1334,14 @@
     sendDocSoon();
   }
 
+  // Cheap fingerprint of everything measure() depends on. Lets play() skip a
+  // full timeline rebuild when nothing has actually moved.
+  let geomSig = '';
+  function geomKey() {
+    return stage.clientWidth + 'x' + stage.clientHeight + '|' +
+           track.style.fontSize + '|' + axis + '|' + track.childElementCount;
+  }
+
   function measure() {
     if (axis === 'x') {
       track.style.paddingTop  = '';
@@ -1341,6 +1355,7 @@
     clampPos();
     buildTimeline();
     applyTransform();
+    geomSig = geomKey();
   }
 
   function buildTimeline() {
@@ -1488,9 +1503,9 @@
     document.body.classList.add('live');
     playIcon.textContent = '\u275a\u275a';
     playLabel.textContent = 'PAUSE';
-    measure();
+    sendState(true);                                    // announce before any heavy work
+    if (!spline || geomKey() !== geomSig) measure();    // rebuild only if layout moved
     keepAwake();
-    sendState(true);
     requestAnimationFrame(frame);
   }
 
@@ -1501,8 +1516,8 @@
     playLabel.textContent = 'PLAY';
     letSleep();
     saveCurrentPos();
+    sendState(true);      // the remote hears about the stop before any disk work
     save();
-    sendState(true);
   }
 
   function toggle() { running ? stop() : play(); }
