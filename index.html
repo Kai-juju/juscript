@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- JuScript v1.9 -->
+<!-- JuScript v2.0 -->
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -8,7 +8,7 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="JuScript">
-<title>JuScript v1.9 — Teleprompter</title>
+<title>JuScript v2.0 — Teleprompter</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600&family=Source+Serif+4:wght@500;600&family=Space+Grotesk:wght@700&display=swap" rel="stylesheet">
@@ -502,7 +502,7 @@
       <span class="name">JuScript</span>
       <span class="kind">Teleprompter</span>
     </div>
-    <span class="ver">v1.9</span>
+    <span class="ver">v2.0</span>
     <div class="spacer"></div>
 
     <div class="seg-ctl prompter-only" role="group" aria-label="Scroll direction">
@@ -645,6 +645,16 @@
 
   const KEY = 'juscript:v1';
   const PALETTE = ['#ffffff', '#60ff00', '#ff00bf'];
+  // The relay this app ships with. Baked in so it never has to be typed.
+  // Change it here if you ever move the relay somewhere else.
+  // Must be declared before load()/seed() run, further down.
+  const DEFAULT_RELAY = 'wss://juscript-relay.hi-justinong.workers.dev';
+
+  const qs       = new URLSearchParams(location.search);
+  const isRemote = location.hash.slice(1).split('&').indexOf('remote') !== -1;
+  const urlCode  = (qs.get('r') || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8);
+  const urlRelay = (qs.get('u') || '').trim();
+
   const WELCOME = 'Welcome to JuScript. Paste a script here, or press + above to add another. Drag the stage to move through the script, or tap a word to snap it to the reading line.';
 
   let running = false;
@@ -950,15 +960,6 @@
     for (let i = 0; i < 4; i++) c += CODE_ALPHA[(Math.random() * CODE_ALPHA.length) | 0];
     return c;
   }
-
-  // The relay this app ships with. Baked in so it never has to be typed.
-  // Change it here if you ever move the relay somewhere else.
-  const DEFAULT_RELAY = 'wss://juscript-relay.hi-justinong.workers.dev';
-
-  const qs        = new URLSearchParams(location.search);
-  const isRemote  = location.hash.slice(1).split('&').indexOf('remote') !== -1;
-  const urlCode   = (qs.get('r') || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8);
-  const urlRelay  = (qs.get('u') || '').trim();
 
   const link = { ws: null, ok: false, peers: 0, tries: 0, timer: null,
                  lastSent: 0, lastKey: '', lastWpm: 0, want: false };
