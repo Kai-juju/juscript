@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- JuScript v2.3 -->
+<!-- JuScript v2.4 -->
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -8,7 +8,7 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="JuScript">
-<title>JuScript v2.3 — Teleprompter</title>
+<title>JuScript v2.4 — Teleprompter</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600&family=Source+Serif+4:wght@500;600&family=Space+Grotesk:wght@700&display=swap" rel="stylesheet">
@@ -517,7 +517,7 @@
       <span class="name">JuScript</span>
       <span class="kind">Teleprompter</span>
     </div>
-    <span class="ver">v2.3</span>
+    <span class="ver">v2.4</span>
     <div class="spacer"></div>
 
     <div class="seg-ctl prompter-only" role="group" aria-label="Scroll direction">
@@ -1072,10 +1072,12 @@
   // How far through the script the read line is, as a fractional word count.
   // Words are the only unit both devices agree on, so the fraction is measured
   // across the words on the current row rather than across the row itself.
-  function currentWord() {
+  function currentWord() { return wfAt(pos); }
+
+  function wfAt(p) {
     const n = rowOff.length, total = wordOff.length;
     if (!n) return 0;
-    const x = readLineC() - pos;
+    const x = readLineC() - p;
     if (x <= rowOff[0]) return 0;
     if (x >= rowOff[n - 1]) return total - 1;
     let lo = 0, hi = n - 1;
@@ -1084,6 +1086,17 @@
     const fr = span > 0 ? (x - rowOff[lo]) / span : 0;
     const a = rowFirst[lo], b = (lo + 1 < n) ? rowFirst[lo + 1] : total;
     return a + fr * (b - a);
+  }
+
+  // Scroll speed in words per second. Reported even while paused, so the
+  // remote knows how fast to start moving the instant PLAY is pressed
+  // rather than waiting for two packets to work it out.
+  function currentVel() {
+    if (!spline || !TTotal) return 0;
+    const h = 0.15;
+    const t0 = Math.max(0, Math.min(Math.max(0, TTotal - h), tCur));
+    const v = (wfAt(spline(t0 + h)) - wfAt(spline(t0))) / h;
+    return Math.max(0, Math.min(40, v));
   }
 
   function sendDoc() {
@@ -1109,6 +1122,7 @@
     link.lastSent = now;
     link.lastKey = key;
     linkSend({ t: 'state', wf: wf, running: running,
+               v: currentVel(),
                wpm: +speedEl.value, size: +sizeEl.value, sw: stage.clientWidth,
                clean: document.body.classList.contains('clean'),
                el: tCur, tot: TTotal });
@@ -1182,8 +1196,10 @@
   // Render slightly in the past and interpolate between the two packets that
   // bracket that moment. Smooth motion at 60fps regardless of packet timing,
   // instead of chasing each packet with a lagging filter.
-  const R_DELAY = 160;
-  let rBuf = [], rRaf = 0, rRunning = false;
+  // Dead reckoning: the remote advances its own position every frame at the
+  // speed the prompter reported, and treats arriving packets as corrections.
+  // Starts instantly and stays smooth between packets.
+  let rWf = null, rVel = 0, rCorr = 0, rLast = 0, rRaf = 0, rRunning = false;
 
   function fmtT(v) {
     v = Math.max(0, Math.round(v || 0));
@@ -1192,7 +1208,7 @@
 
   function applyDoc(m) {
     scriptEl.value = m.text || '';
-    rBuf = [];
+    rWf = null;
     if (m.axis && m.axis !== axis) setAxis(m.axis);
     else render();
   }
@@ -1229,50 +1245,37 @@
       sizeEl.value = m.size;
       sizeOut.textContent = m.size;
     }
-    if (applyTrackSize()) { rBuf = []; measure(); }   // wrapping changed
+    if (applyTrackSize()) measure();   // wrapping changed; word position still valid
     const fsR = document.getElementById('fsRemote');
     if (fsR) fsR.classList.toggle('on', !!m.clean);
-    const off = offsetFor(+m.wf || 0);
-    if (off != null && !rHeld()) {
-      rBuf.push({ t: performance.now(), off: off });
-      while (rBuf.length > 12) rBuf.shift();
+    rVel = Math.max(0, +m.v || 0);
+    if (!rHeld()) {
+      const target = +m.wf || 0;
+      const d = target - rWf;
+      // snap on a jump, from a standstill, or on the first packet; otherwise
+      // queue the correction and bleed it in over the next few frames, so a
+      // packet never lands as a visible jolt
+      if (rWf === null || !rRunning || Math.abs(d) > 3) { rWf = target; rCorr = 0; }
+      else rCorr = d;
     }
     startRemote();
   }
 
-  function sampleAt(rt) {
-    const n = rBuf.length;
-    if (!n) return null;
-    if (n === 1 || rt <= rBuf[0].t) return rBuf[0].off;
-    for (let i = n - 1; i > 0; i--) {
-      if (rt >= rBuf[i - 1].t) {
-        const A = rBuf[i - 1], B = rBuf[i];
-        if (rt <= B.t) {
-          const k = (B.t > A.t) ? (rt - A.t) / (B.t - A.t) : 1;
-          return A.off + (B.off - A.off) * k;
-        }
-        break;
-      }
-    }
-    // Ahead of the newest packet: coast on the last known speed while rolling,
-    // hold still when paused. This is what makes a pause feel immediate.
-    const B = rBuf[n - 1], A = rBuf[n - 2];
-    if (!rRunning || B.t <= A.t) return B.off;
-    const v = (B.off - A.off) / (B.t - A.t);
-    return B.off + v * Math.min(rt - B.t, 700);
-  }
-
-  function remoteFrame() {
+  function remoteFrame(ts) {
     rRaf = 0;
-    if (!rHeld()) {
-      const off = sampleAt(performance.now() - R_DELAY);
+    const dt = (rLast && ts - rLast < 250) ? (ts - rLast) / 1000 : 0;
+    rLast = ts;
+    if (!rHeld() && rWf !== null && rowOff.length) {
+      if (rRunning) rWf += rVel * dt;
+      if (rCorr) { const k = Math.min(1, dt * 5); rWf += rCorr * k; rCorr -= rCorr * k; }
+      rWf = Math.max(0, Math.min(wordOff.length - 1, rWf));
+      const off = offsetFor(rWf);
       if (off != null) {
         pos = Math.max(-travel, Math.min(0, readLineC() - off));
         applyTransform();
       }
     }
-    const fresh = rBuf.length && performance.now() - rBuf[rBuf.length - 1].t < 900;
-    if (rRunning || fresh || rHeld()) rRaf = requestAnimationFrame(remoteFrame);
+    if (rRunning || rHeld()) rRaf = requestAnimationFrame(remoteFrame);
   }
 
   function startRemote() { if (!rRaf) rRaf = requestAnimationFrame(remoteFrame); }
@@ -1528,7 +1531,7 @@
     if (document.visibilityState === 'hidden') {
       saveCurrentPos(); save();
     } else if (isRemote) {
-      rBuf = [];
+      rWf = null;
       keepAwake();
       startRemote();
     } else if (running) {
@@ -1550,7 +1553,6 @@
   function settleScrub() {
     if (isRemote) {
       sendSeek(true);
-      rBuf = [];
       rHold(700);        // brief grace so the prompter's reply doesn't yank it back
       startRemote();
       return;
@@ -2049,7 +2051,7 @@
   window.addEventListener('resize', () => {
     clearTimeout(rt);
     rt = setTimeout(() => {
-      if (isRemote && applyTrackSize()) rBuf = [];
+      if (isRemote) applyTrackSize();
       measure();
       updateCount();
     }, 120);
