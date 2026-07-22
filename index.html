@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- JuScript v1.5 -->
+<!-- JuScript v1.6 -->
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -8,7 +8,7 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="JuScript">
-<title>JuScript — Teleprompter</title>
+<title>JuScript v1.6 — Teleprompter</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600&family=Source+Serif+4:wght@500;600&family=Space+Grotesk:wght@700&display=swap" rel="stylesheet">
@@ -412,6 +412,66 @@
   .stage:fullscreen { background: #000; }
   .stage:-webkit-full-screen { background: #000; }
 
+  /* ---------- link / remote ---------- */
+  .pip {
+    width: 9px; height: 9px; border-radius: 50%;
+    background: var(--steel-dim); flex-shrink: 0;
+    transition: background .2s;
+  }
+  .pip.warn { background: var(--amber); }
+  .pip.on   { background: var(--green); }
+  .pip.err  { background: var(--tally); }
+
+  #linkBtn { display: inline-flex; align-items: center; gap: 7px; }
+  #linkBtn .code { letter-spacing: 2px; font-weight: 600; }
+
+  .remote-only { display: none !important; }
+  body.remote .remote-only { display: flex !important; }
+  body.remote #editor,
+  body.remote #flipH,
+  body.remote #flipV,
+  body.remote .prompter-only { display: none !important; }
+  body.remote .stage { cursor: default; }
+  body.remote .brand .kind { display: inline; color: var(--amber); }
+
+  .sheet {
+    position: fixed; inset: 0; z-index: 20; display: none;
+    align-items: center; justify-content: center;
+    background: rgba(0,0,0,.74); padding: 18px;
+  }
+  body.sheet-open .sheet { display: flex; }
+  .sheet-card {
+    background: var(--panel); border: 1px solid var(--line);
+    border-radius: 6px; padding: 18px; width: 100%; max-width: 420px;
+    max-height: 90dvh; overflow-y: auto;
+  }
+  .sheet-title {
+    font-family: var(--disp); font-size: 13px; letter-spacing: 2px;
+    text-transform: uppercase; color: var(--paper); margin-bottom: 4px;
+  }
+  .sheet-sub {
+    font-size: 11px; line-height: 1.6; color: var(--steel-dim); margin-bottom: 16px;
+  }
+  .fld { display: block; margin-bottom: 14px; }
+  .fld span {
+    display: block; font-size: 9px; letter-spacing: 2px;
+    text-transform: uppercase; color: var(--steel-dim); margin-bottom: 6px;
+  }
+  .fld input {
+    width: 100%; min-height: 46px; padding: 0 12px;
+    background: var(--console); color: var(--text);
+    border: 1px solid var(--line); border-radius: 3px;
+    font-family: var(--ui); font-size: 15px;
+  }
+  .fld input:focus { outline: 2px solid var(--amber); outline-offset: -1px; }
+  #roomCode { letter-spacing: 5px; font-weight: 600; text-transform: uppercase; font-size: 20px; }
+  .sheet-note {
+    font-size: 11px; line-height: 1.7; color: var(--steel);
+    background: var(--console); border: 1px solid var(--line); border-radius: 3px;
+    padding: 10px 12px; margin-bottom: 14px; word-break: break-all;
+  }
+  .sheet-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+
   @media (max-width: 760px) {
     .brand .kind { display: none; }
     .controls { gap: 12px; }
@@ -426,16 +486,17 @@
       <span class="name">JuScript</span>
       <span class="kind">Teleprompter</span>
     </div>
-    <span class="ver">v1.5</span>
+    <span class="ver">v1.6</span>
     <div class="spacer"></div>
 
-    <div class="seg-ctl" role="group" aria-label="Scroll direction">
+    <div class="seg-ctl prompter-only" role="group" aria-label="Scroll direction">
       <button id="axisX" class="on" aria-pressed="true"><span class="arrow">←</span>Sideways</button>
       <button id="axisY" aria-pressed="false"><span class="arrow">↑</span>Upward</button>
     </div>
 
     <button class="iconbtn" id="flipH" title="Mirror left-right for beam-splitter glass">Flip H</button>
     <button class="iconbtn" id="flipV" title="Mirror top-bottom for beam-splitter glass">Flip V</button>
+    <button class="iconbtn" id="linkBtn" title="Pair a remote"><span class="pip" id="linkPip"></span><span class="code" id="linkLabel">----</span></button>
     <button class="iconbtn" id="fsBtn" title="Fill the screen with the prompt">Fullscreen</button>
     <button class="iconbtn" id="topToggle" aria-expanded="true" title="Show or hide the top controls"><span class="chev">▲</span></button>
   </div>
@@ -451,6 +512,13 @@
     <button class="play" id="playBtn"><span id="playIcon">▶</span><span id="playLabel">PLAY</span></button>
     <button class="iconbtn" id="resetBtn" title="Return to the start">Reset</button>
 
+    <div class="group remote-only">
+      <label>Nudge</label>
+      <button class="step" id="nudgeBack" aria-label="Back three seconds">&#8630;</button>
+      <button class="step" id="nudgeFwd" aria-label="Forward three seconds">&#8631;</button>
+      <span class="readout" id="remoteTime" style="min-width:86px">0:00 / 0:00</span>
+    </div>
+
     <div class="group">
       <label>Speed · WPM</label>
       <button class="step" id="speedDown" aria-label="Decrease words per minute">−</button>
@@ -459,7 +527,7 @@
       <span class="readout" id="speedOut">145</span>
     </div>
 
-    <div class="group">
+    <div class="group prompter-only">
       <label>Pacing</label>
       <button class="step" id="paceDown" aria-label="Decrease speech pacing">−</button>
       <input type="range" id="pace" min="0" max="100" value="25" step="5" aria-label="Speech pacing amount">
@@ -511,6 +579,22 @@
     </div>
   </div>
 
+  <div class="sheet" id="sheet">
+    <div class="sheet-card">
+      <div class="sheet-title">Remote link</div>
+      <div class="sheet-sub" id="sheetSub"></div>
+      <label class="fld"><span>Relay address</span><input type="url" id="relayUrl" spellcheck="false" autocapitalize="off" autocorrect="off" placeholder="wss://juscript-relay.you.workers.dev"></label>
+      <label class="fld"><span>Room code</span><input type="text" id="roomCode" maxlength="8" spellcheck="false" autocapitalize="characters" autocorrect="off"></label>
+      <div class="sheet-note" id="sheetNote"></div>
+      <div class="sheet-row">
+        <button class="iconbtn" id="sheetCopy">Copy remote link</button>
+        <button class="iconbtn" id="sheetNew">New code</button>
+        <span class="spacer"></span>
+        <button class="iconbtn" id="sheetClose">Done</button>
+      </div>
+    </div>
+  </div>
+
 <script>
 (function () {
   const stage       = document.getElementById('stage');
@@ -558,6 +642,7 @@
   let TTotal = 0;       // full duration in seconds
   let tsA = null, ysA = null;   // blended anchors, for inverse lookup
   let wordT = [], wordP = [];   // per-word blended time / position
+  let wordOff = [];             // per-word geometric offset along the axis (device-local)
 
   /* ---- pacing math ---- */
 
@@ -782,7 +867,8 @@
         font: 'sans',
         ui: { tabs: true, edit: true, top: true },
         flipH: false,
-        flipV: false
+        flipV: false,
+        link: { url: '', code: null }
       }
     };
   }
@@ -804,6 +890,10 @@
       if (!s.settings.ui) s.settings.ui = { tabs: true, edit: true, top: true };
       if (typeof s.settings.ui.top !== 'boolean') s.settings.ui.top = true;
       if (PALETTE.indexOf(s.settings.color) === -1) s.settings.color = '#ffffff';
+      // v1.6 — remote link settings
+      if (!s.settings.link || typeof s.settings.link !== 'object') s.settings.link = {};
+      if (typeof s.settings.link.url !== 'string') s.settings.link.url = '';
+      if (!/^[A-Z0-9]{4,8}$/.test(s.settings.link.code || '')) s.settings.link.code = null;
       return s;
     } catch (e) { return null; }
   }
@@ -828,6 +918,215 @@
     store.settings.pacing = +paceEl.value;
     store.settings[axis].size = +sizeEl.value;
     save();
+  }
+
+  /* ---------- link (remote control) ---------- */
+
+  const CODE_ALPHA = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  function makeCode() {
+    let c = '';
+    for (let i = 0; i < 4; i++) c += CODE_ALPHA[(Math.random() * CODE_ALPHA.length) | 0];
+    return c;
+  }
+
+  const qs        = new URLSearchParams(location.search);
+  const isRemote  = location.hash.slice(1).split('&').indexOf('remote') !== -1;
+  const urlCode   = (qs.get('r') || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8);
+  const urlRelay  = (qs.get('u') || '').trim();
+
+  const link = { ws: null, ok: false, peers: 0, tries: 0, timer: null,
+                 lastSent: 0, lastKey: '', lastWpm: 0, want: false };
+  let docTimer = null;
+
+  function linkStatus() {
+    const pip = document.getElementById('linkPip');
+    const lbl = document.getElementById('linkLabel');
+    if (lbl) lbl.textContent = store.settings.link.code || '----';
+    if (!pip) return;
+    pip.className = 'pip' + (!link.want ? '' : link.ok ? (link.peers > 1 ? ' on' : ' warn') : ' err');
+  }
+
+  function linkSend(o) {
+    if (link.ws && link.ws.readyState === 1) {
+      try { link.ws.send(JSON.stringify(o)); } catch (e) {}
+    }
+  }
+
+  function linkConnect() {
+    const cfg = store.settings.link;
+    clearTimeout(link.timer);
+    if (link.ws) { try { link.ws.onclose = null; link.ws.close(); } catch (e) {} link.ws = null; }
+    if (!cfg.url || !/^wss?:\/\//i.test(cfg.url) || !cfg.code) {
+      link.want = false; link.ok = false; link.peers = 0; linkStatus(); return;
+    }
+    link.want = true;
+    let ws;
+    try { ws = new WebSocket(cfg.url + '?room=' + encodeURIComponent(cfg.code)); }
+    catch (e) { linkRetry(); return; }
+    link.ws = ws;
+    ws.onopen = function () {
+      link.ok = true; link.tries = 0; linkStatus();
+      linkSend({ t: 'hello', role: isRemote ? 'remote' : 'prompter' });
+      if (isRemote) keepAwake(); else { sendDoc(); sendState(true); }
+    };
+    ws.onmessage = function (e) { try { onLinkMsg(JSON.parse(e.data)); } catch (err) {} };
+    ws.onclose = function () { link.ok = false; link.peers = 0; linkStatus(); linkRetry(); };
+    ws.onerror = function () { try { ws.close(); } catch (e) {} };
+  }
+
+  function linkRetry() {
+    if (!link.want) return;
+    clearTimeout(link.timer);
+    link.timer = setTimeout(linkConnect,
+      Math.min(8000, 400 * Math.pow(1.7, Math.min(link.tries++, 6))));
+  }
+
+  function onLinkMsg(m) {
+    if (!m || !m.t) return;
+    if (m.t === 'peers') { link.peers = m.n; linkStatus(); return; }
+    if (isRemote) {
+      if (m.t === 'doc') applyDoc(m);
+      else if (m.t === 'state') applyState(m);
+    } else {
+      if (m.t === 'hello' && m.role === 'remote') { sendDoc(); sendState(true); }
+      else if (m.t === 'cmd') applyCmd(m);
+    }
+  }
+
+  /* --- prompter side --- */
+
+  function readLineC() {
+    return (axis === 'x') ? stage.clientWidth * 0.5 : stage.clientHeight * 0.5;
+  }
+
+  // Which word is sitting on the read line right now, as an index + fraction
+  // toward the next word. Purely geometric, so it is independent of screen
+  // size, text size, orientation and the pacing curve.
+  function currentWord() {
+    const n = wordOff.length;
+    if (!n) return { wi: 0, f: 0 };
+    const x = readLineC() - pos;
+    if (x <= wordOff[0]) return { wi: 0, f: 0 };
+    if (x >= wordOff[n - 1]) return { wi: n - 1, f: 0 };
+    let lo = 0, hi = n - 1;
+    while (hi - lo > 1) { const md = (lo + hi) >> 1; if (wordOff[md] <= x) lo = md; else hi = md; }
+    const span = wordOff[hi] - wordOff[lo];
+    return { wi: lo, f: span > 0 ? (x - wordOff[lo]) / span : 0 };
+  }
+
+  function sendDoc() {
+    if (isRemote || !link.ok) return;
+    const a = active();
+    linkSend({ t: 'doc', text: a ? a.text : '', name: a ? a.name : '', axis: axis });
+  }
+  function sendDocSoon() {
+    if (isRemote) return;
+    clearTimeout(docTimer);
+    docTimer = setTimeout(sendDoc, 350);
+  }
+
+  function sendState(force) {
+    if (isRemote || !link.ok) return;
+    const now = performance.now();
+    const c = currentWord();
+    const key = c.wi + '|' + (running ? 1 : 0) + '|' + speedEl.value;
+    if (!force) {
+      if (now - link.lastSent < 140) return;        // hard rate cap while rolling
+      if (!running && key === link.lastKey) return; // idle and unchanged: say nothing
+    }
+    link.lastSent = now;
+    link.lastKey = key;
+    linkSend({ t: 'state', wi: c.wi, f: c.f, running: running,
+               wpm: +speedEl.value, el: tCur, tot: TTotal });
+  }
+
+  function applyCmd(m) {
+    switch (m.c) {
+      case 'toggle':
+        toggle();
+        break;
+      case 'reset':
+        reset();
+        break;
+      case 'nudge':
+        stopMomentum();
+        if (spline) {
+          tCur = Math.max(0, Math.min(TTotal, tCur + (+m.dt || 0)));
+          pos = spline(tCur);
+          clampPos();
+          applyTransform();
+          saveCurrentPos();
+        }
+        break;
+      case 'wpm':
+        bump(speedEl, +m.d || 0, afterSpeed);
+        break;
+      case 'wpmset':
+        speedEl.value = Math.max(+speedEl.min, Math.min(+speedEl.max, +m.v || 145));
+        afterSpeed();
+        persistControls();
+        break;
+      case 'jump':
+        if (wordOff[m.wi] != null) {
+          stopMomentum();
+          pos = Math.max(-travel, Math.min(0, readLineC() - wordOff[m.wi]));
+          tCur = invertPos(pos);
+          applyTransform();
+          saveCurrentPos();
+        }
+        break;
+    }
+    sendState(true);
+    save();
+  }
+
+  /* --- remote side --- */
+
+  let rTarget = null, rRaf = 0, rRunning = false;
+
+  function fmtT(v) {
+    v = Math.max(0, Math.round(v || 0));
+    return Math.floor(v / 60) + ':' + String(v % 60).padStart(2, '0');
+  }
+
+  function applyDoc(m) {
+    scriptEl.value = m.text || '';
+    rTarget = null;
+    if (m.axis && m.axis !== axis) setAxis(m.axis);
+    else render();
+  }
+
+  function applyState(m) {
+    rTarget = { wi: m.wi | 0, f: +m.f || 0 };
+    rRunning = !!m.running;
+    document.body.classList.toggle('live', rRunning);
+    playIcon.textContent  = rRunning ? '\u275a\u275a' : '\u25b6';
+    playLabel.textContent = rRunning ? 'PAUSE' : 'PLAY';
+    if (performance.now() - link.lastWpm > 900 && +speedEl.value !== +m.wpm) {
+      speedEl.value = m.wpm;
+      speedOut.textContent = m.wpm;
+    }
+    const el = document.getElementById('remoteTime');
+    if (el) el.textContent = fmtT(m.el) + ' / ' + fmtT(m.tot);
+    if (!rRaf) rRaf = requestAnimationFrame(remoteFrame);
+  }
+
+  function remoteFrame() {
+    rRaf = 0;
+    if (!rTarget || !wordOff.length) return;
+    const i = Math.max(0, Math.min(wordOff.length - 1, rTarget.wi));
+    const a = wordOff[i];
+    const b = (i + 1 < wordOff.length) ? wordOff[i + 1] : a;
+    const off = a + (b - a) * Math.max(0, Math.min(1, rTarget.f));
+    const target = Math.max(-travel, Math.min(0, readLineC() - off));
+    const d = target - pos;
+    if (Math.abs(d) < 0.5) pos = target; else pos += d * 0.28;
+    applyTransform();
+    if (Math.abs(target - pos) > 0.5 || rRunning) rRaf = requestAnimationFrame(remoteFrame);
+  }
+
+  function cmd(c, extra) {
+    linkSend(Object.assign({ t: 'cmd', c: c }, extra || {}));
   }
 
   /* ---------- rendering ---------- */
@@ -868,6 +1167,7 @@
 
     measure();
     updateCount();
+    sendDocSoon();
   }
 
   function measure() {
@@ -886,7 +1186,7 @@
   }
 
   function buildTimeline() {
-    spline = null; TTotal = 0; tsA = null; ysA = null; wordT = []; wordP = [];
+    spline = null; TTotal = 0; tsA = null; ysA = null; wordT = []; wordP = []; wordOff = [];
 
     const words = Array.from(track.querySelectorAll('.w'));
     if (!words.length) { tCur = 0; return; }
@@ -901,6 +1201,7 @@
       el.dataset.wi = i;
       const off = (axis === 'x') ? el.offsetLeft : el.offsetTop;
       const offEnd = (axis === 'x') ? el.offsetLeft + el.offsetWidth : el.offsetTop;
+      wordOff[i] = off;
       const s = sylCount(toks[i].w);
       const sl = spokenLen(toks[i].w);
       items.push({
@@ -992,6 +1293,7 @@
 
     pos = spline(tCur);
     applyTransform();
+    sendState(false);
     requestAnimationFrame(frame);
   }
 
@@ -1019,6 +1321,7 @@
     playLabel.textContent = 'PAUSE';
     measure();
     keepAwake();
+    sendState(true);
     requestAnimationFrame(frame);
   }
 
@@ -1030,6 +1333,7 @@
     letSleep();
     saveCurrentPos();
     save();
+    sendState(true);
   }
 
   function toggle() { running ? stop() : play(); }
@@ -1085,6 +1389,7 @@
   }
 
   stage.addEventListener('pointerdown', (e) => {
+    if (isRemote) return;
     suppressTap = false;
     if (scrub || !scriptEl.value.trim()) return;
     const hadMomentum = !!momentum;
@@ -1141,6 +1446,16 @@
 
   stage.addEventListener('click', (e) => {
     if (suppressTap) { suppressTap = false; return; }
+    if (isRemote) {
+      const rw = e.target.closest('.w');
+      if (rw && track.contains(rw)) {
+        cmd('jump', { wi: +rw.dataset.wi });
+        rw.classList.remove('hit');
+        void rw.offsetWidth;
+        rw.classList.add('hit');
+      }
+      return;
+    }
     if (running) { toggle(); return; }
     if (document.fullscreenElement || document.webkitFullscreenElement) { play(); return; }
     const w = e.target.closest('.w');
@@ -1340,8 +1655,10 @@
     el.addEventListener('click', () => { fn(); el.blur(); });
   }
 
-  wire(playBtn, toggle);
-  wire(resetBtn, reset);
+  wire(playBtn, () => isRemote ? cmd('toggle') : toggle());
+  wire(resetBtn, () => isRemote ? cmd('reset') : reset());
+  wire(document.getElementById('nudgeBack'), () => cmd('nudge', { dt: -3 }));
+  wire(document.getElementById('nudgeFwd'),  () => cmd('nudge', { dt:  3 }));
   wire(newTabBtn, newScript);
   wire(exportBtn, doExport);
   wire(importBtn, () => fileIn.click());
@@ -1411,7 +1728,10 @@
   }
 
   speedEl.addEventListener('input', afterSpeed);
-  speedEl.addEventListener('change', () => { persistControls(); speedEl.blur(); });
+  speedEl.addEventListener('change', () => {
+    if (isRemote) { link.lastWpm = performance.now(); cmd('wpmset', { v: +speedEl.value }); speedEl.blur(); return; }
+    persistControls(); speedEl.blur();
+  });
   paceEl.addEventListener('input', afterPace);
   paceEl.addEventListener('change', () => { persistControls(); paceEl.blur(); });
   sizeEl.addEventListener('input', afterSize);
@@ -1442,8 +1762,10 @@
     });
   }
 
-  holdable(document.getElementById('speedDown'), () => bump(speedEl, -5, afterSpeed));
-  holdable(document.getElementById('speedUp'),   () => bump(speedEl,  5, afterSpeed));
+  holdable(document.getElementById('speedDown'), () =>
+    isRemote ? (link.lastWpm = performance.now(), cmd('wpm', { d: -5 })) : bump(speedEl, -5, afterSpeed));
+  holdable(document.getElementById('speedUp'),   () =>
+    isRemote ? (link.lastWpm = performance.now(), cmd('wpm', { d:  5 })) : bump(speedEl,  5, afterSpeed));
   holdable(document.getElementById('paceDown'),  () => bump(paceEl,  -5, afterPace));
   holdable(document.getElementById('paceUp'),    () => bump(paceEl,   5, afterPace));
   holdable(document.getElementById('sizeDown'),  () => bump(sizeEl,  -2, afterSize));
@@ -1510,6 +1832,79 @@
     rt = setTimeout(() => { measure(); updateCount(); }, 120);
   });
 
+  /* ---------- pairing sheet ---------- */
+
+  const sheet     = document.getElementById('sheet');
+  const relayUrl  = document.getElementById('relayUrl');
+  const roomCode  = document.getElementById('roomCode');
+  const sheetNote = document.getElementById('sheetNote');
+  const sheetSub  = document.getElementById('sheetSub');
+
+  function remoteLink() {
+    const cfg = store.settings.link;
+    return location.origin + location.pathname
+         + '?r=' + encodeURIComponent(cfg.code || '')
+         + '&u=' + encodeURIComponent(cfg.url || '')
+         + '#remote';
+  }
+
+  function paintSheet() {
+    relayUrl.value = store.settings.link.url || '';
+    roomCode.value = store.settings.link.code || '';
+    if (isRemote) {
+      sheetSub.textContent = 'This device is the remote. It needs the same relay address and room code as the prompter.';
+      sheetNote.textContent = link.ok
+        ? (link.peers > 1 ? 'Connected to the prompter.' : 'Connected, waiting for the prompter to join.')
+        : 'Not connected yet.';
+    } else {
+      sheetSub.textContent = 'Open this link on the second phone to turn it into a remote.';
+      sheetNote.textContent = remoteLink();
+    }
+  }
+
+  function openSheet() { paintSheet(); document.body.classList.add('sheet-open'); }
+
+  function commitSheet() {
+    const u = relayUrl.value.trim()
+                .replace(/^http:\/\//i, 'ws://')
+                .replace(/^https:\/\//i, 'wss://')
+                .replace(/\/+$/, '');
+    const c = roomCode.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8);
+    const changed = (u !== store.settings.link.url) || (c !== (store.settings.link.code || ''));
+    store.settings.link.url = u;
+    store.settings.link.code = (c.length >= 4) ? c : null;
+    save();
+    linkStatus();
+    if (changed) linkConnect();
+  }
+
+  wire(document.getElementById('linkBtn'), openSheet);
+  wire(document.getElementById('sheetNew'), () => {
+    roomCode.value = makeCode();
+    commitSheet();
+    paintSheet();
+  });
+  wire(document.getElementById('sheetCopy'), () => {
+    commitSheet();
+    const t = remoteLink();
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(t).then(
+        () => { sheetNote.textContent = 'Copied. Paste it into a message to the second phone.'; },
+        () => { sheetNote.textContent = t; }
+      );
+    } else {
+      relayUrl.blur();
+      sheetNote.textContent = t;
+    }
+  });
+  wire(document.getElementById('sheetClose'), () => {
+    commitSheet();
+    document.body.classList.remove('sheet-open');
+  });
+  sheet.addEventListener('click', (e) => {
+    if (e.target === sheet) { commitSheet(); document.body.classList.remove('sheet-open'); }
+  });
+
   /* ---------- init ---------- */
 
   stage.dataset.axis = axis;
@@ -1531,6 +1926,7 @@
     s.classList.toggle('on', s.dataset.color === (store.settings.color || '#ffffff'))
   );
 
+  document.body.classList.toggle('remote', isRemote);
   applyDrawers();
 
   (function setFontInit() {
@@ -1548,6 +1944,16 @@
   renderTabs();
   loadActive();
   save();
+
+  if (urlRelay) store.settings.link.url = urlRelay;
+  if (urlCode)  store.settings.link.code = urlCode;
+  if (!store.settings.link.code && !isRemote) store.settings.link.code = makeCode();
+  save();
+  linkStatus();
+  if (store.settings.link.url && store.settings.link.code) linkConnect();
+  else if (isRemote) openSheet();
+
+  setInterval(() => { if (!isRemote) sendState(false); }, 250);
 
   if (document.fonts && document.fonts.ready) {
     document.fonts.ready.then(() => { measure(); });
