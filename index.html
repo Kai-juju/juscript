@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- JuScript v1.6 -->
+<!-- JuScript v1.7 -->
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -8,7 +8,7 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="JuScript">
-<title>JuScript v1.6 — Teleprompter</title>
+<title>JuScript v1.7 — Teleprompter</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600&family=Source+Serif+4:wght@500;600&family=Space+Grotesk:wght@700&display=swap" rel="stylesheet">
@@ -471,6 +471,23 @@
     padding: 10px 12px; margin-bottom: 14px; word-break: break-all;
   }
   .sheet-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .sheet-link {
+    font-size: 12px; line-height: 1.7; color: var(--amber);
+    background: var(--console); border: 1px solid var(--line); border-radius: 3px;
+    padding: 11px 12px; margin-bottom: 14px; word-break: break-all;
+    user-select: all; -webkit-user-select: all;
+  }
+  details.adv { margin-top: 16px; border-top: 1px solid var(--line); padding-top: 12px; }
+  details.adv summary {
+    list-style: none; cursor: pointer;
+    font-size: 9px; letter-spacing: 2px; text-transform: uppercase;
+    color: var(--steel-dim); min-height: 30px; display: flex; align-items: center; gap: 7px;
+  }
+  details.adv summary::-webkit-details-marker { display: none; }
+  details.adv summary::before { content: "\25b8"; transition: transform .15s; }
+  details.adv[open] summary::before { transform: rotate(90deg); }
+  details.adv summary:hover { color: var(--steel); }
+  details.adv .fld { margin-top: 12px; }
 
   @media (max-width: 760px) {
     .brand .kind { display: none; }
@@ -486,7 +503,7 @@
       <span class="name">JuScript</span>
       <span class="kind">Teleprompter</span>
     </div>
-    <span class="ver">v1.6</span>
+    <span class="ver">v1.7</span>
     <div class="spacer"></div>
 
     <div class="seg-ctl prompter-only" role="group" aria-label="Scroll direction">
@@ -583,15 +600,19 @@
     <div class="sheet-card">
       <div class="sheet-title">Remote link</div>
       <div class="sheet-sub" id="sheetSub"></div>
-      <label class="fld"><span>Relay address</span><input type="url" id="relayUrl" spellcheck="false" autocapitalize="off" autocorrect="off" placeholder="wss://juscript-relay.you.workers.dev"></label>
-      <label class="fld"><span>Room code</span><input type="text" id="roomCode" maxlength="8" spellcheck="false" autocapitalize="characters" autocorrect="off"></label>
+      <div class="sheet-link" id="sheetLink"></div>
       <div class="sheet-note" id="sheetNote"></div>
       <div class="sheet-row">
-        <button class="iconbtn" id="sheetCopy">Copy remote link</button>
+        <button class="iconbtn" id="sheetCopy">Send link</button>
         <button class="iconbtn" id="sheetNew">New code</button>
         <span class="spacer"></span>
         <button class="iconbtn" id="sheetClose">Done</button>
       </div>
+      <details class="adv" id="adv">
+        <summary>Advanced</summary>
+        <label class="fld"><span>Relay address</span><input type="url" id="relayUrl" spellcheck="false" autocapitalize="off" autocorrect="off"></label>
+        <label class="fld"><span>Room code</span><input type="text" id="roomCode" maxlength="8" spellcheck="false" autocapitalize="characters" autocorrect="off"></label>
+      </details>
     </div>
   </div>
 
@@ -868,7 +889,7 @@
         ui: { tabs: true, edit: true, top: true },
         flipH: false,
         flipV: false,
-        link: { url: '', code: null }
+        link: { url: DEFAULT_RELAY, code: null }
       }
     };
   }
@@ -893,6 +914,7 @@
       // v1.6 — remote link settings
       if (!s.settings.link || typeof s.settings.link !== 'object') s.settings.link = {};
       if (typeof s.settings.link.url !== 'string') s.settings.link.url = '';
+      if (!s.settings.link.url) s.settings.link.url = DEFAULT_RELAY;
       if (!/^[A-Z0-9]{4,8}$/.test(s.settings.link.code || '')) s.settings.link.code = null;
       return s;
     } catch (e) { return null; }
@@ -928,6 +950,10 @@
     for (let i = 0; i < 4; i++) c += CODE_ALPHA[(Math.random() * CODE_ALPHA.length) | 0];
     return c;
   }
+
+  // The relay this app ships with. Baked in so it never has to be typed.
+  // Change it here if you ever move the relay somewhere else.
+  const DEFAULT_RELAY = 'wss://juscript-relay.hi-justinong.workers.dev';
 
   const qs        = new URLSearchParams(location.search);
   const isRemote  = location.hash.slice(1).split('&').indexOf('remote') !== -1;
@@ -1839,27 +1865,35 @@
   const roomCode  = document.getElementById('roomCode');
   const sheetNote = document.getElementById('sheetNote');
   const sheetSub  = document.getElementById('sheetSub');
+  const sheetLink = document.getElementById('sheetLink');
+  const adv       = document.getElementById('adv');
 
   function remoteLink() {
     const cfg = store.settings.link;
-    return location.origin + location.pathname
-         + '?r=' + encodeURIComponent(cfg.code || '')
-         + '&u=' + encodeURIComponent(cfg.url || '')
-         + '#remote';
+    let u = location.origin + location.pathname + '?r=' + encodeURIComponent(cfg.code || '');
+    if (cfg.url && cfg.url !== DEFAULT_RELAY) u += '&u=' + encodeURIComponent(cfg.url);
+    return u + '#remote';
   }
 
   function paintSheet() {
     relayUrl.value = store.settings.link.url || '';
     roomCode.value = store.settings.link.code || '';
+    const st = !link.want ? 'Not set up yet.'
+             : !link.ok   ? 'Connecting\u2026'
+             : link.peers > 1 ? 'Connected \u2014 both devices are linked.'
+             : 'Connected, waiting for the other device.';
     if (isRemote) {
-      sheetSub.textContent = 'This device is the remote. It needs the same relay address and room code as the prompter.';
-      sheetNote.textContent = link.ok
-        ? (link.peers > 1 ? 'Connected to the prompter.' : 'Connected, waiting for the prompter to join.')
-        : 'Not connected yet.';
+      sheetSub.textContent = 'This phone is the remote.';
+      sheetLink.style.display = 'none';
+      document.getElementById('sheetCopy').style.display = 'none';
+      document.getElementById('sheetNew').style.display = 'none';
+      if (!store.settings.link.code) adv.open = true;
     } else {
-      sheetSub.textContent = 'Open this link on the second phone to turn it into a remote.';
-      sheetNote.textContent = remoteLink();
+      sheetSub.textContent = 'Open this on the second phone once. She can add it to her home screen and it will work every time after that.';
+      sheetLink.style.display = '';
+      sheetLink.textContent = remoteLink();
     }
+    sheetNote.textContent = st;
   }
 
   function openSheet() { paintSheet(); document.body.classList.add('sheet-open'); }
@@ -1887,14 +1921,15 @@
   wire(document.getElementById('sheetCopy'), () => {
     commitSheet();
     const t = remoteLink();
+    if (navigator.share) {
+      navigator.share({ title: 'JuScript remote', url: t }).catch(() => {});
+      return;
+    }
     if (navigator.clipboard && navigator.clipboard.writeText) {
       navigator.clipboard.writeText(t).then(
-        () => { sheetNote.textContent = 'Copied. Paste it into a message to the second phone.'; },
-        () => { sheetNote.textContent = t; }
+        () => { sheetNote.textContent = 'Copied to the clipboard.'; },
+        () => {}
       );
-    } else {
-      relayUrl.blur();
-      sheetNote.textContent = t;
     }
   });
   wire(document.getElementById('sheetClose'), () => {
@@ -1946,6 +1981,7 @@
   save();
 
   if (urlRelay) store.settings.link.url = urlRelay;
+  if (!store.settings.link.url) store.settings.link.url = DEFAULT_RELAY;
   if (urlCode)  store.settings.link.code = urlCode;
   if (!store.settings.link.code && !isRemote) store.settings.link.code = makeCode();
   save();
