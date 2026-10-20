@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- JuScript v2.6 -->
+<!-- JuScript v2.7 -->
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -8,7 +8,7 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="JuScript">
-<title>JuScript v2.6 — Teleprompter</title>
+<title>JuScript v2.7 — Teleprompter</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600&family=Source+Serif+4:wght@500;600&family=Space+Grotesk:wght@700&display=swap" rel="stylesheet">
@@ -517,7 +517,7 @@
       <span class="name">JuScript</span>
       <span class="kind">Teleprompter</span>
     </div>
-    <span class="ver">v2.6</span>
+    <span class="ver">v2.7</span>
     <div class="spacer"></div>
 
     <div class="seg-ctl prompter-only" role="group" aria-label="Scroll direction">
@@ -548,7 +548,7 @@
     <button class="iconbtn remote-only" id="fsRemote" title="Fill the prompter's screen">Fullscreen</button>
 
     <div class="group">
-      <label>Speed · WPM</label>
+      <label id="speedLbl">Speed · WPM</label>
       <button class="step" id="speedDown" aria-label="Decrease words per minute">−</button>
       <input type="range" id="speed" min="60" max="400" value="145" step="5" aria-label="Speaking pace in words per minute">
       <button class="step" id="speedUp" aria-label="Increase words per minute">+</button>
@@ -639,6 +639,7 @@
   const resetBtn    = document.getElementById('resetBtn');
   const speedEl     = document.getElementById('speed');
   const speedOut    = document.getElementById('speedOut');
+  const speedLbl    = document.getElementById('speedLbl');
   const paceEl      = document.getElementById('pace');
   const paceOut     = document.getElementById('paceOut');
   const sizeEl      = document.getElementById('size');
@@ -760,10 +761,12 @@
     return Math.max(1, total + extra);
   }
 
+  // v2.7: full-width Chinese / Japanese punctuation (\u3002\uff01\uff1f\uff0c\u3001\uff1b\uff1a) and the
+  // closing quotes and brackets that follow it (\u201d \u2019 \u300d \u300f \uff09 \u3011 \u300b \u3009)
   function pauseFor(tok, ws) {
     let p = 0;
-    if (/[.!?\u2026]["')\]]*$/.test(tok)) p += 0.5;
-    else if (/[,;:\u2014\u2013]["')\]]*$/.test(tok)) p += 0.24;
+    if (/[.!?\u2026\u3002\uff01\uff1f\uff0e]["')\]\u201d\u2019\u300d\u300f\uff09\u3011\u300b\u3009]*$/.test(tok)) p += 0.5;
+    else if (/[,;:\u2014\u2013\uff0c\u3001\uff1b\uff1a]["')\]\u201d\u2019\u300d\u300f\uff09\u3011\u300b\u3009]*$/.test(tok)) p += 0.24;
     const nl = (ws.match(/\n/g) || []).length;
     if (nl >= 2) p += 0.8;
     else if (nl === 1) p += 0.35;
@@ -847,11 +850,51 @@
     return { ts: ts, ys: bys, T: T, wordIdx: wordIdx };
   }
 
+  // v2.7: Chinese and Japanese are written without spaces, so splitting on
+  // whitespace alone turned a whole sentence into one "word" (sideways shot
+  // past in a second, upward crawled at a pixel a second). Inside any run that
+  // contains CJK characters, each character becomes its own token: one
+  // syllable each in Mandarin, which sylCount already returns for them.
+  // Punctuation rides with a neighbour: closers (。，」) stay on the character
+  // before, openers (「“（) go with the character after. Latin runs inside
+  // Chinese text (AI, 4K, iPhone) stay whole. Runs with no CJK characters in
+  // them are returned untouched, so English scripts tokenise exactly as before.
+  const CJK_RE  = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}]/u;
+  const WORD_RE = /[\p{L}\p{N}]/u;
+  const OPEN_RE = /[〈《「『【〔〖〘〚〝（［｛“‘(\[{]/;
+
+  function splitRun(run) {
+    if (!CJK_RE.test(run)) return [run];
+    const out = [];
+    let cur = '', kind = '', lead = '';
+    for (const ch of run) {
+      if (CJK_RE.test(ch)) {
+        if (cur) out.push(cur);
+        cur = lead + ch; kind = 'cjk'; lead = '';
+      } else if (WORD_RE.test(ch)) {
+        if (kind === 'lat' && !lead) cur += ch;
+        else { if (cur) out.push(cur); cur = lead + ch; kind = 'lat'; lead = ''; }
+      } else if (OPEN_RE.test(ch) || !cur) {
+        lead += ch;                       // waits for the next character
+      } else {
+        cur += ch;                        // trailing punctuation
+      }
+    }
+    if (lead) cur += lead;                // an opener with nothing after it
+    if (cur) out.push(cur);
+    return out;
+  }
+
   function tokenize(raw) {
     const out = [];
     const re = /(\S+)(\s*)/g;
     let m;
-    while ((m = re.exec(raw))) out.push({ w: m[1], ws: m[2] });
+    while ((m = re.exec(raw))) {
+      const parts = splitRun(m[1]);
+      for (let k = 0; k < parts.length; k++) {
+        out.push({ w: parts[k], ws: (k === parts.length - 1) ? m[2] : '' });
+      }
+    }
     return out;
   }
 
@@ -1311,18 +1354,17 @@
 
   /* ---------- rendering ---------- */
 
+  // Built from tokenize() so the spans and the timing tokens always line up
+  // one to one, including per-character CJK tokens (v2.7).
   function buildWords(text, container) {
-    const parts = text.split(/(\s+)/);
-    for (const p of parts) {
-      if (!p) continue;
-      if (/^\s+$/.test(p)) {
-        container.appendChild(document.createTextNode(p));
-      } else {
-        const s = document.createElement('span');
-        s.className = 'w';
-        s.textContent = p;
-        container.appendChild(s);
-      }
+    const lead = /^\s*/.exec(text)[0];
+    if (lead) container.appendChild(document.createTextNode(lead));
+    for (const t of tokenize(text)) {
+      const s = document.createElement('span');
+      s.className = 'w';
+      s.textContent = t.w;
+      container.appendChild(s);
+      if (t.ws) container.appendChild(document.createTextNode(t.ws));
     }
   }
 
@@ -1455,16 +1497,28 @@
       : 'translate(-50%, ' + pos + 'px)';
   }
 
+  // v2.7: Chinese is counted in characters, and the speed readout switches to
+  // CPM (characters per minute) when most of the script is CJK, since that is
+  // what the slider value then means.
   function updateCount() {
-    const txt = scriptEl.value.trim();
-    const words = txt ? txt.split(/\s+/).length : 0;
+    const toks = tokenize(scriptEl.value);
+    let chars = 0;
+    for (const t of toks) if (CJK_RE.test(t.w)) chars++;
+    const words = toks.length - chars;
     let dur = '';
-    if (words && TTotal > 0) {
+    if (toks.length && TTotal > 0) {
       const m = Math.floor(TTotal / 60);
       const s = Math.round(TTotal % 60);
       dur = '  \u00b7  ~' + m + ':' + String(s).padStart(2, '0');
     }
-    countEl.textContent = words + (words === 1 ? ' word' : ' words') + dur;
+    const wTxt = words + (words === 1 ? ' word' : ' words');
+    countEl.textContent = (chars
+      ? chars + (chars === 1 ? ' char' : ' chars') + (words ? ' + ' + wTxt : '')
+      : wTxt) + dur;
+    const cpm = chars > words;
+    speedLbl.textContent = cpm ? 'Speed \u00b7 CPM' : 'Speed \u00b7 WPM';
+    speedEl.setAttribute('aria-label', cpm ? 'Speaking pace in characters per minute'
+                                           : 'Speaking pace in words per minute');
   }
 
   /* ---------- transport ---------- */
@@ -1677,17 +1731,14 @@
     if (document.fullscreenElement || document.webkitFullscreenElement) { play(); return; }
     const w = e.target.closest('.w');
     if (!w || !track.contains(w)) return;
-    const wi = +w.dataset.wi;
-    if (wordT[wi] != null) {
-      tCur = wordT[wi];
-      pos = Math.max(-travel, Math.min(0, wordP[wi]));
-    } else {
-      const target = (axis === 'x')
-        ? stage.clientWidth * 0.5 - w.offsetLeft
-        : stage.clientHeight * 0.5 - w.offsetTop;
-      pos = Math.max(-travel, Math.min(0, target));
-      tCur = invertPos(pos);
-    }
+    // v2.7: always snap geometrically, as the remote's jump does. The timeline
+    // position for a word (wordP) only matches the reading line at high pacing;
+    // at 0% it left the tapped word hundreds of pixels off the line.
+    const target = (axis === 'x')
+      ? stage.clientWidth * 0.5 - w.offsetLeft
+      : stage.clientHeight * 0.5 - w.offsetTop;
+    pos = Math.max(-travel, Math.min(0, target));
+    tCur = invertPos(pos);
     applyTransform();
     saveCurrentPos();
     save();
